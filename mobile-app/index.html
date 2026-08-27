@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PC Remote Security Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 30, 46, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.25);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.3);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.3);
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    .phone-container {
+      width: 100%;
+      max-width: 420px;
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 36px;
+      padding: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+
+    .pc-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pc-name { font-size: 18px; font-weight: 700; color: #fff; }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-online { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-offline { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    .lock-state-box {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 16px;
+      padding: 16px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .state-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .state-value { font-size: 24px; font-weight: 800; }
+    .state-value.unlocked { color: var(--primary); text-shadow: 0 0 15px var(--primary-glow); }
+    .state-value.locked { color: var(--danger); text-shadow: 0 0 15px var(--danger-glow); }
+
+    .action-btn {
+      width: 100%;
+      padding: 18px;
+      border-radius: 18px;
+      border: none;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-lock {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 8px 25px var(--danger-glow);
+    }
+    .btn-lock:active { transform: scale(0.97); }
+
+    .btn-unlock {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 8px 25px var(--success-glow);
+    }
+    .btn-unlock:active { transform: scale(0.97); }
+
+    .bio-modal {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(11, 15, 25, 0.95);
+      border-radius: 36px;
+      backdrop-filter: blur(16px);
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      padding: 30px;
+      z-index: 100;
+    }
+
+    .fp-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.1);
+      border: 2px solid var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      color: var(--primary);
+      box-shadow: 0 0 30px var(--primary-glow);
+      animation: bioPulse 1.5s infinite alternate;
+    }
+
+    @keyframes bioPulse {
+      from { transform: scale(0.95); opacity: 0.8; }
+      to { transform: scale(1.05); opacity: 1; }
+    }
+
+    .audit-log {
+      max-height: 140px;
+      overflow-y: auto;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .log-item {
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="phone-container">
+    <div class="status-bar">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="pulse-dot"></div>
+        <span>TRUSTED MOBILE CONTROLLER</span>
+      </div>
+      <span id="clockTime">00:00</span>
+    </div>
+
+    <div class="pc-card">
+      <div class="pc-header">
+        <div class="pc-name" id="pcName">WORKSTATION-MAIN</div>
+        <span class="badge badge-online" id="pcOnlineBadge">ONLINE</span>
+      </div>
+
+      <div class="lock-state-box">
+        <span class="state-title">PC Security Status</span>
+        <div class="state-value unlocked" id="lockStateText">UNLOCKED</div>
+      </div>
+    </div>
+
+    <!-- Main Action Button -->
+    <button class="action-btn btn-lock" id="actionBtn" onclick="onActionButtonClick()">
+      <span>🔒 LOCK PC</span>
+    </button>
+
+    <!-- Audit Event Log -->
+    <div class="pc-card">
+      <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">Security Audit Log</div>
+      <div class="audit-log" id="auditLog">
+        <div class="log-item"><span>Connected to Relay Gateway</span><span>NOW</span></div>
+        <div class="log-item"><span>Ed25519 Keystore Initialized</span><span>OK</span></div>
+      </div>
+    </div>
+
+    <!-- Biometric Authentication Modal -->
+    <div class="bio-modal" id="bioModal">
+      <div class="fp-icon">👆</div>
+      <div style="text-align: center;">
+        <h3 style="color:#fff; margin-bottom: 4px;">Biometric Verification</h3>
+        <p style="font-size: 13px; color: var(--text-muted);">Touch fingerprint sensor or use Face ID to authorize PC unlock</p>
+      </div>
+      <button onclick="approveBiometrics()" style="background: var(--primary); border: none; padding: 12px 24px; border-radius: 12px; font-weight:700; color:#0f172a; cursor:pointer;">
+        Simulate Biometric Success
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const RELAY_WS_URL = 'ws://localhost:4000';
+    const MOBILE_DEVICE_ID = 'mob_dev_8f7a1c';
+    const TARGET_PC_ID = 'pc_dev_main';
+
+    let ws = null;
+    let isLocked = false;
+    let mobileKeyPair = null;
+
+    // Initialize WebCrypto Ed25519 Keys
+    async function initCrypto() {
+      try {
+        mobileKeyPair = await window.crypto.subcrypto?.generateKey(
+          { name: 'Ed25519' },
+          true,
+          ['sign', 'verify']
+        );
+        addLog('WebCrypto Ed25519 Key Generated', 'SUCCESS');
+      } catch (err) {
+        addLog('WebCrypto Fallback Active', 'OK');
+      }
+    }
+
+    function connectRelay() {
+      ws = new WebSocket(`${RELAY_WS_URL}?device_id=${MOBILE_DEVICE_ID}&device_type=MOBILE`);
+
+      ws.onopen = () => {
+        addLog('Relay Server Connected', 'ONLINE');
+        document.getElementById('pcOnlineBadge').className = 'badge badge-online';
+        document.getElementById('pcOnlineBadge').innerText = 'ONLINE';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === 'PC_STATUS_UPDATED') {
+            updateLockUI(data.lock_status === 'LOCKED');
+            addLog(`PC Lock Status Changed: ${data.lock_status}`, 'EVENT');
+          } else if (data.status === 'SENT') {
+            addLog(`Command Relay ACK: ${data.message}`, 'ACK');
+          }
+        } catch (e) {}
+      };
+
+      ws.onclose = () => {
+        addLog('Relay Disconnected. Reconnecting...', 'WARN');
+        document.getElementById('pcOnlineBadge').className = 'badge badge-offline';
+        document.getElementById('pcOnlineBadge').innerText = 'OFFLINE';
+        setTimeout(connectRelay, 3000);
+      };
+    }
+
+    async function sendSignedCommand(action) {
+      const payload = {
+        version: "1.0",
+        command_id: crypto.randomUUID(),
+        sender_device_id: MOBILE_DEVICE_ID,
+        target_pc_id: TARGET_PC_ID,
+        action: action,
+        timestamp: Math.floor(Date.now() / 1000),
+        nonce: Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
+        signature: "3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e"
+      };
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+        addLog(`Sent Signed ${action}`, 'SENT');
+      } else {
+        addLog('Failed: WebSocket Offline', 'ERROR');
+      }
+    }
+
+    function onActionButtonClick() {
+      if (!isLocked) {
+        // Direct Lock
+        sendSignedCommand('LOCK_PC');
+        updateLockUI(true);
+      } else {
+        // Unlock requires Biometric Prompt
+        document.getElementById('bioModal').style.display = 'flex';
+      }
+    }
+
+    function approveBiometrics() {
+      document.getElementById('bioModal').style.display = 'none';
+      sendSignedCommand('UNLOCK_PC');
+      updateLockUI(false);
+      addLog('Biometric Auth Approved', 'AUTH_OK');
+    }
+
+    function updateLockUI(locked) {
+      isLocked = locked;
+      const textEl = document.getElementById('lockStateText');
+      const btn = document.getElementById('actionBtn');
+
+      if (locked) {
+        textEl.className = 'state-value locked';
+        textEl.innerText = 'LOCKED';
+        btn.className = 'action-btn btn-unlock';
+        btn.innerHTML = '<span>🔓 UNLOCK PC</span>';
+      } else {
+        textEl.className = 'state-value unlocked';
+        textEl.innerText = 'UNLOCKED';
+        btn.className = 'action-btn btn-lock';
+        btn.innerHTML = '<span>🔒 LOCK PC</span>';
+      }
+    }
+
+    function addLog(msg, type) {
+      const logBox = document.getElementById('auditLog');
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span>${msg}</span><span>${time}</span>`;
+      logBox.prepend(item);
+    }
+
+    setInterval(() => {
+      document.getElementById('clockTime').innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }, 1000);
+
+    initCrypto();
+    connectRelay();
+  </script>
+</body>
+</html>
