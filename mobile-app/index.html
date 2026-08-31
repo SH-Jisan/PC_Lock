@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -17,7 +17,6 @@
       --danger-glow: rgba(239, 68, 68, 0.3);
       --success: #10b981;
       --success-glow: rgba(16, 185, 129, 0.3);
-      --warning: #f59e0b;
       --text: #f8fafc;
       --text-muted: #94a3b8;
     }
@@ -45,7 +44,7 @@
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px rgba(56, 189, 248, 0.1);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
       position: relative;
     }
 
@@ -69,17 +68,42 @@
       animation: pulse 2s infinite;
     }
 
+    .pulse-dot.offline {
+      background: #94a3b8;
+      box-shadow: none;
+      animation: none;
+    }
+
     @keyframes pulse {
       0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
       70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
 
+    .pc-selector-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pc-select {
+      background: #1e293b;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      cursor: pointer;
+    }
+
     .pc-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 20px;
-      padding: 20px;
+      padding: 18px;
       backdrop-filter: blur(12px);
       display: flex;
       flex-direction: column;
@@ -92,7 +116,7 @@
       align-items: center;
     }
 
-    .pc-name { font-size: 18px; font-weight: 700; color: #fff; }
+    .pc-name { font-size: 17px; font-weight: 700; color: #fff; }
     .badge {
       font-size: 11px;
       font-weight: 700;
@@ -100,9 +124,12 @@
       border-radius: 20px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
     .badge-online { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
-    .badge-offline { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .badge-offline { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); }
 
     .lock-state-box {
       background: rgba(15, 23, 42, 0.6);
@@ -111,30 +138,29 @@
       text-align: center;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
       border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
-    .state-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
-    .state-value { font-size: 24px; font-weight: 800; }
+    .state-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+    .state-value { font-size: 22px; font-weight: 800; }
     .state-value.unlocked { color: var(--primary); text-shadow: 0 0 15px var(--primary-glow); }
     .state-value.locked { color: var(--danger); text-shadow: 0 0 15px var(--danger-glow); }
 
     .action-btn {
       width: 100%;
-      padding: 18px;
-      border-radius: 18px;
+      padding: 16px;
+      border-radius: 16px;
       border: none;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       color: #fff;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
     }
 
     .btn-lock {
@@ -176,16 +202,10 @@
       font-size: 36px;
       color: var(--primary);
       box-shadow: 0 0 30px var(--primary-glow);
-      animation: bioPulse 1.5s infinite alternate;
-    }
-
-    @keyframes bioPulse {
-      from { transform: scale(0.95); opacity: 0.8; }
-      to { transform: scale(1.05); opacity: 1; }
     }
 
     .audit-log {
-      max-height: 140px;
+      max-height: 120px;
       overflow-y: auto;
       font-size: 11px;
       font-family: 'JetBrains Mono', monospace;
@@ -209,58 +229,50 @@
   <div class="phone-container">
     <div class="status-bar">
       <div style="display: flex; align-items: center; gap: 8px;">
-        <div class="pulse-dot"></div>
+        <div class="pulse-dot" id="serverPulse"></div>
         <span>TRUSTED CONTROLLER</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button onclick="configureCloudServer()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--primary); font-size: 10px; padding: 2px 6px; border-radius: 6px; cursor: pointer;">🌐 Server</button>
-        <span id="clockTime">00:00</span>
-      </div>
+      <button onclick="configureCloudServer()" style="background:none; border:none; color:var(--primary); font-size:12px; cursor:pointer;">⚙️ Server</button>
     </div>
 
+    <!-- Live PC Selector -->
+    <div class="pc-selector-box">
+      <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Select Workstation:</div>
+      <select id="pcSelector" class="pc-select" onchange="onTerminalSelect(this.value)">
+        <option value="">Searching for online PCs...</option>
+      </select>
+    </div>
 
     <div class="pc-card">
       <div class="pc-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <select id="pcSelector" onchange="onTerminalSelect(this.value)" style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--card-border); color: #fff; padding: 6px 10px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;">
-            <option value="pc_dev_01">TERMINAL [PC-01]</option>
-            <option value="pc_dev_02">TERMINAL [PC-02]</option>
-            <option value="pc_dev_03">TERMINAL [PC-03]</option>
-            <option value="pc_dev_04">TERMINAL [PC-04]</option>
-          </select>
+        <div>
+          <div class="pc-name" id="pcNameDisplay">Workstation</div>
+          <div style="font-size: 11px; color: var(--text-muted);" id="pcIdDisplay">ID: --</div>
         </div>
-        <span class="badge badge-online" id="pcOnlineBadge">ONLINE</span>
+        <span class="badge badge-offline" id="pcOnlineBadge">⚪ OFFLINE</span>
       </div>
 
       <div class="lock-state-box">
-        <span class="state-title">Pre-Boot & Desktop Security Status</span>
-        <div class="state-value locked" id="lockStateText">LOCKED</div>
-        <div id="prebootInfo" style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #f87171; margin-top: 4px;">
-          🛑 UEFI BOOT BLOCKED (Pre-Boot Lock Active)
-        </div>
+        <span class="state-title">Remote Lock State</span>
+        <div class="state-value unlocked" id="lockStateText">UNLOCKED</div>
       </div>
-
-      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; padding: 6px 10px; background: rgba(0,0,0,0.3); border-radius: 8px;">
-        <span>ADMIN EMERGENCY PIN:</span>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span id="adminPinDisplay" style="color: #facc15; font-weight: 700;">123456</span>
-          <button onclick="changeTerminalPin()" style="background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--primary); font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Edit</button>
-        </div>
+      
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); font-family:'JetBrains Mono';">
+        <span>Last Active: <strong id="lastActiveDisplay">--</strong></span>
+        <span>PIN: <strong id="adminPinDisplay" style="color:#facc15;">998877</strong></span>
       </div>
     </div>
 
     <!-- Main Action Button -->
-    <button class="action-btn btn-unlock" id="actionBtn" onclick="onActionButtonClick()">
-      <span>🔓 UNLOCK TERMINAL & BOOT</span>
+    <button class="action-btn btn-lock" id="actionBtn" onclick="onActionButtonClick()">
+      <span>🔒 LOCK PC</span>
     </button>
 
-
-    <!-- Audit Event Log -->
-    <div class="pc-card">
-      <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">Cyber Cafe Terminal Log</div>
+    <!-- Security Audit Log -->
+    <div class="pc-card" style="padding: 14px;">
+      <div style="font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;">Live Telemetry & Logs</div>
       <div class="audit-log" id="auditLog">
-        <div class="log-item"><span>Pre-Boot Gate Active</span><span>READY</span></div>
-        <div class="log-item"><span>Relay Gateway Connected</span><span>NOW</span></div>
+        <div class="log-item"><span>App Ready</span><span>OK</span></div>
       </div>
     </div>
 
@@ -269,100 +281,170 @@
       <div class="fp-icon">👆</div>
       <div style="text-align: center;">
         <h3 style="color:#fff; margin-bottom: 4px;">Biometric Verification</h3>
-        <p style="font-size: 13px; color: var(--text-muted);">Touch fingerprint sensor or Face ID to unlock PC for customer</p>
+        <p style="font-size: 13px; color: var(--text-muted);">Touch fingerprint sensor or Face ID to unlock PC</p>
       </div>
       <button onclick="approveBiometrics()" style="background: var(--primary); border: none; padding: 12px 24px; border-radius: 12px; font-weight:700; color:#0f172a; cursor:pointer;">
-        Simulate Biometric Success
+        Authorize Unlock
       </button>
     </div>
   </div>
 
-
   <script>
-    // Configuration with LocalStorage persistence for Cloud Server
-    let RELAY_WS_URL = localStorage.getItem('pc_lock_server_url') || 'ws://localhost:4000';
+    let RELAY_WS_URL = localStorage.getItem('pc_lock_server_url') || (window.location.protocol === 'https:' ? 'wss://' + window.location.host : 'ws://' + (window.location.hostname || 'localhost') + ':4000');
     const MOBILE_DEVICE_ID = 'mob_dev_8f7a1c';
 
     let ws = null;
+    let registeredPcs = [];
+    let currentPcId = '';
     let isLocked = false;
-    let mobileKeyPair = null;
+
+    function getApiBaseUrl() {
+      let url = RELAY_WS_URL;
+      if (url.startsWith('wss://')) return url.replace('wss://', 'https://');
+      if (url.startsWith('ws://')) return url.replace('ws://', 'http://');
+      return url;
+    }
 
     function configureCloudServer() {
-      const current = localStorage.getItem('pc_lock_server_url') || RELAY_WS_URL;
-      let newUrl = prompt('Enter your Online Cloud Server URL (e.g., https://my-cyber-lock.onrender.com or wss://...):', current);
+      let current = localStorage.getItem('pc_lock_server_url') || RELAY_WS_URL;
+      let newUrl = prompt('Enter Cloud Relay URL (e.g., https://pc-lock-relay.onrender.com or ws://localhost:4000):', current);
       if (newUrl && newUrl.trim() !== '') {
         newUrl = newUrl.trim();
-        // Automatically convert https:// to wss:// and http:// to ws://
-        if (newUrl.startsWith('https://')) {
-          newUrl = newUrl.replace('https://', 'wss://');
-        } else if (newUrl.startsWith('http://')) {
-          newUrl = newUrl.replace('http://', 'ws://');
-        } else if (!newUrl.startsWith('ws://') && !newUrl.startsWith('wss://')) {
-          newUrl = 'wss://' + newUrl;
-        }
+        if (newUrl.startsWith('https://')) newUrl = newUrl.replace('https://', 'wss://');
+        else if (newUrl.startsWith('http://')) newUrl = newUrl.replace('http://', 'ws://');
+        else if (!newUrl.startsWith('ws://') && !newUrl.startsWith('wss://')) newUrl = 'wss://' + newUrl;
 
         RELAY_WS_URL = newUrl;
         localStorage.setItem('pc_lock_server_url', RELAY_WS_URL);
         if (ws) ws.close();
         connectRelay();
-        addLog(`Server URL set to: ${RELAY_WS_URL}`, 'CONFIG');
+        fetchPcList();
       }
     }
 
-
-    // Initialize WebCrypto Ed25519 Keys
-    async function initCrypto() {
+    async function fetchPcList() {
       try {
-        mobileKeyPair = await window.crypto.subcrypto?.generateKey(
-          { name: 'Ed25519' },
-          true,
-          ['sign', 'verify']
-        );
-        addLog('WebCrypto Ed25519 Key Generated', 'SUCCESS');
-      } catch (err) {
-        addLog('WebCrypto Fallback Active', 'OK');
+        const apiBase = getApiBaseUrl();
+        const res = await fetch(`${apiBase}/api/devices/status`);
+        if (res.ok) {
+          const data = await res.json();
+          registeredPcs = data.pcs || [];
+          renderPcDropdown();
+        }
+      } catch (e) {
+        addLog('Failed to fetch PC list: ' + e.message, 'WARN');
       }
+    }
+
+    function renderPcDropdown() {
+      const select = document.getElementById('pcSelector');
+      if (registeredPcs.length === 0) {
+        select.innerHTML = '<option value="">No PCs connected yet (Run PC Agent)</option>';
+        updateSelectedPcView(null);
+        return;
+      }
+
+      select.innerHTML = registeredPcs.map(p => `
+        <option value="${p.id}" ${p.id === currentPcId ? 'selected' : ''}>
+          ${p.pc_number} - ${p.device_name} (${p.is_online ? '🟢 ONLINE' : '⚪ OFFLINE'})
+        </option>
+      `).join('');
+
+      if (!currentPcId || !registeredPcs.find(p => p.id === currentPcId)) {
+        currentPcId = registeredPcs[0].id;
+      }
+      const selected = registeredPcs.find(p => p.id === currentPcId);
+      updateSelectedPcView(selected);
+    }
+
+    function onTerminalSelect(pcId) {
+      currentPcId = pcId;
+      const selected = registeredPcs.find(p => p.id === pcId);
+      updateSelectedPcView(selected);
+    }
+
+    function updateSelectedPcView(pc) {
+      if (!pc) {
+        document.getElementById('pcNameDisplay').innerText = 'No PC Selected';
+        document.getElementById('pcIdDisplay').innerText = 'Start PC Agent to connect';
+        document.getElementById('pcOnlineBadge').className = 'badge badge-offline';
+        document.getElementById('pcOnlineBadge').innerText = '⚪ OFFLINE';
+        return;
+      }
+
+      document.getElementById('pcNameDisplay').innerText = `${pc.pc_number} (${pc.device_name})`;
+      document.getElementById('pcIdDisplay').innerText = `ID: ${pc.id}`;
+      document.getElementById('adminPinDisplay').innerText = pc.admin_pin || '998877';
+      document.getElementById('lastActiveDisplay').innerText = pc.last_seen_at ? new Date(pc.last_seen_at).toLocaleTimeString() : (pc.is_online ? 'Live' : 'Never');
+
+      const badge = document.getElementById('pcOnlineBadge');
+      if (pc.is_online) {
+        badge.className = 'badge badge-online';
+        badge.innerText = '🟢 ONLINE';
+      } else {
+        badge.className = 'badge badge-offline';
+        badge.innerText = '⚪ OFFLINE';
+      }
+
+      updateLockUI(pc.lock_status === 'LOCKED');
     }
 
     function connectRelay() {
       try {
         ws = new WebSocket(`${RELAY_WS_URL}?device_id=${MOBILE_DEVICE_ID}&device_type=MOBILE`);
       } catch (e) {
-        addLog(`Connection error: ${e.message}`, 'ERROR');
         return;
       }
 
-
       ws.onopen = () => {
-        addLog('Relay Server Connected', 'ONLINE');
-        document.getElementById('pcOnlineBadge').className = 'badge badge-online';
-        document.getElementById('pcOnlineBadge').innerText = 'ONLINE';
+        addLog('Relay Gateway Connected', 'ONLINE');
+        document.getElementById('serverPulse').className = 'pulse-dot';
+        fetchPcList();
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.event === 'PC_STATUS_UPDATED') {
-            updateLockUI(data.lock_status === 'LOCKED');
-            addLog(`PC Lock Status Changed: ${data.lock_status}`, 'EVENT');
-          } else if (data.status === 'SENT') {
-            addLog(`Command Relay ACK: ${data.message}`, 'ACK');
+          
+          if (data.event === 'PC_CONNECTION_STATE') {
+            const pc = registeredPcs.find(p => p.id === data.pc_id);
+            if (pc) {
+              pc.is_online = data.is_online;
+              pc.last_seen_at = data.last_seen_at;
+            } else {
+              fetchPcList();
+            }
+            renderPcDropdown();
+            addLog(`PC ${data.pc_id} is now ${data.is_online ? 'ONLINE' : 'OFFLINE'}`, 'STATUS');
+          } else if (data.event === 'PC_STATUS_UPDATED') {
+            const pc = registeredPcs.find(p => p.id === data.pc_id);
+            if (pc) pc.lock_status = data.lock_status;
+            if (currentPcId === data.pc_id) {
+              updateLockUI(data.lock_status === 'LOCKED');
+            }
+            addLog(`PC ${data.pc_id} Lock State: ${data.lock_status}`, 'EVENT');
+          } else if (data.status === 'OFFLINE') {
+            addLog(data.message, 'OFFLINE');
+            alert(data.message);
           }
         } catch (e) {}
       };
 
       ws.onclose = () => {
-        addLog('Relay Disconnected. Reconnecting...', 'WARN');
-        document.getElementById('pcOnlineBadge').className = 'badge badge-offline';
-        document.getElementById('pcOnlineBadge').innerText = 'OFFLINE';
+        document.getElementById('serverPulse').className = 'pulse-dot offline';
         setTimeout(connectRelay, 3000);
       };
     }
 
     async function sendSignedCommand(action) {
+      if (!currentPcId) {
+        alert('No PC connected. Please start the PC Security Agent first.');
+        return;
+      }
+
       const payload = {
         version: "1.0",
-        command_id: crypto.randomUUID(),
+        command_id: crypto.randomUUID ? crypto.randomUUID() : ('cmd_' + Date.now()),
         sender_device_id: MOBILE_DEVICE_ID,
         target_pc_id: currentPcId,
         action: action,
@@ -371,10 +453,9 @@
         signature: "3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e"
       };
 
-
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
-        addLog(`Sent Signed ${action}`, 'SENT');
+        addLog(`Dispatched ${action} -> ${currentPcId}`, 'SENT');
       } else {
         addLog('Failed: WebSocket Offline', 'ERROR');
       }
@@ -382,12 +463,15 @@
 
     function onActionButtonClick() {
       if (!isLocked) {
-        // Direct Lock
         sendSignedCommand('LOCK_PC');
         updateLockUI(true);
       } else {
-        // Unlock requires Biometric Prompt
-        document.getElementById('bioModal').style.display = 'flex';
+        // Native Android Biometric check if running inside APK
+        if (window.AndroidBiometric && window.AndroidBiometric.triggerBiometricAuth) {
+          window.AndroidBiometric.triggerBiometricAuth();
+        } else {
+          document.getElementById('bioModal').style.display = 'flex';
+        }
       }
     }
 
@@ -395,86 +479,26 @@
       document.getElementById('bioModal').style.display = 'none';
       sendSignedCommand('UNLOCK_PC');
       updateLockUI(false);
-      addLog('Biometric Auth Approved', 'AUTH_OK');
+      addLog('Biometrics Approved', 'AUTH_OK');
     }
-
-    let currentPcId = 'pc_dev_01';
-    const pcPins = {
-      'pc_dev_01': '123456',
-      'pc_dev_02': '654321',
-      'pc_dev_03': '998877',
-      'pc_dev_04': '778899'
-    };
-
-    function onTerminalSelect(pcId) {
-      currentPcId = pcId;
-      document.getElementById('adminPinDisplay').innerText = pcPins[pcId] || '998877';
-      addLog(`Switched control to ${pcId}`, 'SELECT');
-    }
-
-    function getHttpApiBaseUrl() {
-      let url = RELAY_WS_URL;
-      if (url.startsWith('wss://')) {
-        return url.replace('wss://', 'https://');
-      } else if (url.startsWith('ws://')) {
-        return url.replace('ws://', 'http://');
-      }
-      return url;
-    }
-
-    async function changeTerminalPin() {
-      const current = pcPins[currentPcId] || '998877';
-      const newPin = prompt(`Set new 6-digit Emergency PIN for ${currentPcId}:`, current);
-      if (!newPin || newPin.trim() === '' || newPin === current) return;
-
-      try {
-        const apiBase = getHttpApiBaseUrl();
-        const res = await fetch(`${apiBase}/api/devices/pc/set-pin`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pcId: currentPcId, adminPin: newPin.trim() })
-        });
-        if (res.ok) {
-          pcPins[currentPcId] = newPin.trim();
-          document.getElementById('adminPinDisplay').innerText = newPin.trim();
-          addLog(`Updated PIN for ${currentPcId} to ${newPin.trim()}`, 'PIN_OK');
-        }
-      } catch (e) {
-        pcPins[currentPcId] = newPin.trim();
-        document.getElementById('adminPinDisplay').innerText = newPin.trim();
-        addLog(`PIN updated locally: ${newPin.trim()}`, 'PIN_LOCAL');
-      }
-    }
-
-
 
     function updateLockUI(locked) {
       isLocked = locked;
       const textEl = document.getElementById('lockStateText');
-      const prebootEl = document.getElementById('prebootInfo');
       const btn = document.getElementById('actionBtn');
 
       if (locked) {
         textEl.className = 'state-value locked';
         textEl.innerText = 'LOCKED';
-        if (prebootEl) {
-          prebootEl.innerText = '🛑 UEFI BOOT BLOCKED (Pre-Boot Lock Active)';
-          prebootEl.style.color = '#f87171';
-        }
         btn.className = 'action-btn btn-unlock';
-        btn.innerHTML = '<span>🔓 UNLOCK TERMINAL & BOOT</span>';
+        btn.innerHTML = '<span>🔓 UNLOCK PC</span>';
       } else {
         textEl.className = 'state-value unlocked';
         textEl.innerText = 'UNLOCKED';
-        if (prebootEl) {
-          prebootEl.innerText = '🟢 UEFI BOOT AUTHORIZED (Windows Ready)';
-          prebootEl.style.color = '#34d399';
-        }
         btn.className = 'action-btn btn-lock';
-        btn.innerHTML = '<span>🔒 LOCK TERMINAL</span>';
+        btn.innerHTML = '<span>🔒 LOCK PC</span>';
       }
     }
-
 
     function addLog(msg, type) {
       const logBox = document.getElementById('auditLog');
@@ -485,12 +509,9 @@
       logBox.prepend(item);
     }
 
-    setInterval(() => {
-      document.getElementById('clockTime').innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }, 1000);
-
-    initCrypto();
+    fetchPcList();
     connectRelay();
+    setInterval(fetchPcList, 8000);
   </script>
 </body>
 </html>

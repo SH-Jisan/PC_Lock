@@ -94,62 +94,8 @@ class JsonDatabase implements Database {
   }
 
   private initDefaultSeed() {
-    if (this.data.pc_devices.length === 0) {
-      this.data.pc_devices = [
-        {
-          id: 'pc_dev_01',
-          user_id: 'user_demo_1',
-          device_name: 'Cyber Gaming Terminal 1',
-          pc_number: 'PC-01',
-          mac_address: 'AA:BB:CC:DD:EE:01',
-          admin_pin: '123456',
-          pc_public_key: 'PUBKEY_01',
-          hardware_uuid: 'HW_UUID_01',
-          is_online: 1,
-          lock_status: 'LOCKED',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'pc_dev_02',
-          user_id: 'user_demo_1',
-          device_name: 'Cyber Gaming Terminal 2',
-          pc_number: 'PC-02',
-          mac_address: 'AA:BB:CC:DD:EE:02',
-          admin_pin: '654321',
-          pc_public_key: 'PUBKEY_02',
-          hardware_uuid: 'HW_UUID_02',
-          is_online: 0,
-          lock_status: 'LOCKED',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'pc_dev_03',
-          user_id: 'user_demo_1',
-          device_name: 'Cyber Gaming Terminal 3',
-          pc_number: 'PC-03',
-          mac_address: 'AA:BB:CC:DD:EE:03',
-          admin_pin: '998877',
-          pc_public_key: 'PUBKEY_03',
-          hardware_uuid: 'HW_UUID_03',
-          is_online: 1,
-          lock_status: 'UNLOCKED',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'pc_dev_04',
-          user_id: 'user_demo_1',
-          device_name: 'Cyber Gaming Terminal 4',
-          pc_number: 'PC-04',
-          mac_address: 'AA:BB:CC:DD:EE:04',
-          admin_pin: '778899',
-          pc_public_key: 'PUBKEY_04',
-          hardware_uuid: 'HW_UUID_04',
-          is_online: 0,
-          lock_status: 'LOCKED',
-          created_at: new Date().toISOString(),
-        },
-      ];
-
+    // Zero predefined PCs: Only real connected PCs will appear
+    if (this.data.mobile_devices.length === 0) {
       this.data.mobile_devices = [
         {
           id: 'mob_dev_8f7a1c',
@@ -160,14 +106,6 @@ class JsonDatabase implements Database {
           created_at: new Date().toISOString(),
         },
       ];
-
-      this.data.device_pairings = [
-        { id: 'pair_01', pc_id: 'pc_dev_01', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
-        { id: 'pair_02', pc_id: 'pc_dev_02', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
-        { id: 'pair_03', pc_id: 'pc_dev_03', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
-        { id: 'pair_04', pc_id: 'pc_dev_04', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
-      ];
-
       this.persist();
     }
   }
@@ -251,18 +189,27 @@ class JsonDatabase implements Database {
 
     if (s.includes('insert into pc_devices')) {
       const [id, user_id, device_name, pc_number, pc_public_key, hardware_uuid, is_online, lock_status] = params;
-      this.data.pc_devices.push({
-        id,
-        user_id: user_id || 'user_demo_1',
-        device_name: device_name || 'Cyber Terminal',
-        pc_number: pc_number || `PC-0${this.data.pc_devices.length + 1}`,
-        admin_pin: '998877',
-        pc_public_key: pc_public_key || 'PUBKEY',
-        hardware_uuid: hardware_uuid || id,
-        is_online: is_online !== undefined ? is_online : 1,
-        lock_status: lock_status || 'LOCKED',
-        created_at: new Date().toISOString(),
-      });
+      const existing = this.data.pc_devices.find(p => p.id === id || p.hardware_uuid === hardware_uuid);
+      if (existing) {
+        existing.is_online = is_online !== undefined ? is_online : 1;
+        existing.last_seen_at = new Date().toISOString();
+        if (device_name) existing.device_name = device_name;
+      } else {
+        const num = pc_number || `PC-0${this.data.pc_devices.length + 1}`;
+        this.data.pc_devices.push({
+          id,
+          user_id: user_id || 'user_demo_1',
+          device_name: device_name || `Cyber Workstation (${num})`,
+          pc_number: num,
+          admin_pin: '998877',
+          pc_public_key: pc_public_key || 'PUBKEY',
+          hardware_uuid: hardware_uuid || id,
+          is_online: is_online !== undefined ? is_online : 1,
+          lock_status: lock_status || 'UNLOCKED',
+          last_seen_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+        });
+      }
       this.persist();
       return { changes: 1 };
     }
@@ -309,6 +256,7 @@ class JsonDatabase implements Database {
         pc.device_name = device_name;
         pc.pc_public_key = pc_public_key;
         pc.is_online = 1;
+        pc.last_seen_at = new Date().toISOString();
         this.persist();
       }
       return { changes: 1 };
@@ -360,7 +308,7 @@ class JsonDatabase implements Database {
   }
 
   async exec(sql: string): Promise<void> {
-    // Schema initialized in-memory & file
+    // Schema initialized
   }
 }
 
@@ -369,7 +317,7 @@ let dbInstance: Database | null = null;
 export async function getDb(): Promise<Database> {
   if (!dbInstance) {
     dbInstance = new JsonDatabase();
-    console.log('[DB] High-Performance Zero-Dependency Database Engine Active.');
+    console.log('[DB] High-Performance Clean Database Engine Initialized (0 Predefined PCs).');
   }
   return dbInstance;
 }
