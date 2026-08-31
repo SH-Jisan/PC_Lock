@@ -1,111 +1,375 @@
-import sqlite3 from 'sqlite3';
-import { open, Database } from 'sqlite';
+﻿import fs from 'fs';
 import path from 'path';
+
+export interface Database {
+  get(sql: string, params?: any[]): Promise<any>;
+  all(sql: string, params?: any[]): Promise<any[]>;
+  run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
+  exec(sql: string): Promise<void>;
+}
+
+interface DbStore {
+  users: Array<{ id: string; email: string; password_hash: string; created_at: string }>;
+  pc_devices: Array<{
+    id: string;
+    user_id: string;
+    device_name: string;
+    pc_number: string;
+    mac_address?: string;
+    admin_pin: string;
+    pc_public_key: string;
+    hardware_uuid: string;
+    is_online: number;
+    lock_status: string;
+    last_seen_at?: string;
+    created_at: string;
+  }>;
+  mobile_devices: Array<{
+    id: string;
+    user_id: string;
+    device_name: string;
+    mobile_public_key: string;
+    device_token?: string;
+    is_revoked: number;
+    created_at: string;
+  }>;
+  device_pairings: Array<{
+    id: string;
+    pc_id: string;
+    mobile_id: string;
+    paired_at: string;
+    is_active: number;
+  }>;
+  audit_logs: Array<{
+    id: string;
+    pc_id?: string;
+    mobile_id?: string;
+    event_type: string;
+    status: string;
+    ip_address?: string;
+    details?: string;
+    created_at: string;
+  }>;
+}
+
+class JsonDatabase implements Database {
+  private dbPath: string;
+  private data: DbStore;
+  private saveTimeout: NodeJS.Timeout | null = null;
+
+  constructor() {
+    this.dbPath = path.join(__dirname, '../security_relay.json');
+    this.data = this.loadData();
+    this.initDefaultSeed();
+  }
+
+  private loadData(): DbStore {
+    try {
+      if (fs.existsSync(this.dbPath)) {
+        const raw = fs.readFileSync(this.dbPath, 'utf-8');
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[DB] Initializing new database store...');
+    }
+
+    return {
+      users: [],
+      pc_devices: [],
+      mobile_devices: [],
+      device_pairings: [],
+      audit_logs: [],
+    };
+  }
+
+  private persist() {
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    this.saveTimeout = setTimeout(() => {
+      try {
+        fs.writeFileSync(this.dbPath, JSON.stringify(this.data, null, 2), 'utf-8');
+      } catch (err: any) {
+        console.error('[DB Persist Error]:', err.message);
+      }
+    }, 50);
+  }
+
+  private initDefaultSeed() {
+    if (this.data.pc_devices.length === 0) {
+      this.data.pc_devices = [
+        {
+          id: 'pc_dev_01',
+          user_id: 'user_demo_1',
+          device_name: 'Cyber Gaming Terminal 1',
+          pc_number: 'PC-01',
+          mac_address: 'AA:BB:CC:DD:EE:01',
+          admin_pin: '123456',
+          pc_public_key: 'PUBKEY_01',
+          hardware_uuid: 'HW_UUID_01',
+          is_online: 1,
+          lock_status: 'LOCKED',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'pc_dev_02',
+          user_id: 'user_demo_1',
+          device_name: 'Cyber Gaming Terminal 2',
+          pc_number: 'PC-02',
+          mac_address: 'AA:BB:CC:DD:EE:02',
+          admin_pin: '654321',
+          pc_public_key: 'PUBKEY_02',
+          hardware_uuid: 'HW_UUID_02',
+          is_online: 0,
+          lock_status: 'LOCKED',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'pc_dev_03',
+          user_id: 'user_demo_1',
+          device_name: 'Cyber Gaming Terminal 3',
+          pc_number: 'PC-03',
+          mac_address: 'AA:BB:CC:DD:EE:03',
+          admin_pin: '998877',
+          pc_public_key: 'PUBKEY_03',
+          hardware_uuid: 'HW_UUID_03',
+          is_online: 1,
+          lock_status: 'UNLOCKED',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'pc_dev_04',
+          user_id: 'user_demo_1',
+          device_name: 'Cyber Gaming Terminal 4',
+          pc_number: 'PC-04',
+          mac_address: 'AA:BB:CC:DD:EE:04',
+          admin_pin: '778899',
+          pc_public_key: 'PUBKEY_04',
+          hardware_uuid: 'HW_UUID_04',
+          is_online: 0,
+          lock_status: 'LOCKED',
+          created_at: new Date().toISOString(),
+        },
+      ];
+
+      this.data.mobile_devices = [
+        {
+          id: 'mob_dev_8f7a1c',
+          user_id: 'user_demo_1',
+          device_name: 'Admin Master Controller Phone',
+          mobile_public_key: '3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e',
+          is_revoked: 0,
+          created_at: new Date().toISOString(),
+        },
+      ];
+
+      this.data.device_pairings = [
+        { id: 'pair_01', pc_id: 'pc_dev_01', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
+        { id: 'pair_02', pc_id: 'pc_dev_02', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
+        { id: 'pair_03', pc_id: 'pc_dev_03', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
+        { id: 'pair_04', pc_id: 'pc_dev_04', mobile_id: 'mob_dev_8f7a1c', is_active: 1, paired_at: new Date().toISOString() },
+      ];
+
+      this.persist();
+    }
+  }
+
+  async get(sql: string, params: any[] = []): Promise<any> {
+    const s = sql.toLowerCase();
+
+    if (s.includes('from users where email =')) {
+      const email = params[0];
+      return this.data.users.find((u) => u.email === email) || null;
+    }
+
+    if (s.includes('from pc_devices where hardware_uuid =')) {
+      const uuid = params[0];
+      return this.data.pc_devices.find((p) => p.hardware_uuid === uuid) || null;
+    }
+
+    if (s.includes('from pc_devices where upper(mac_address) =')) {
+      const mac = (params[0] || '').toUpperCase();
+      return this.data.pc_devices.find((p) => (p.mac_address || '').toUpperCase() === mac) || null;
+    }
+
+    if (s.includes('from pc_devices where id =')) {
+      const id = params[0];
+      return this.data.pc_devices.find((p) => p.id === id) || null;
+    }
+
+    if (s.includes('select count(*) as cnt from pc_devices')) {
+      return { cnt: this.data.pc_devices.length };
+    }
+
+    if (s.includes('from pc_devices order by pc_number asc limit 1')) {
+      return this.data.pc_devices[0] || null;
+    }
+
+    if (s.includes('from mobile_devices where id =') && s.includes('is_revoked = 0')) {
+      const id = params[0];
+      return this.data.mobile_devices.find((m) => m.id === id && m.is_revoked === 0) || null;
+    }
+
+    if (s.includes('from device_pairings where pc_id =') && s.includes('mobile_id =')) {
+      const pcId = params[0];
+      const mobId = params[1];
+      return this.data.device_pairings.find((dp) => dp.pc_id === pcId && dp.mobile_id === mobId && dp.is_active === 1) || null;
+    }
+
+    return null;
+  }
+
+  async all(sql: string, params: any[] = []): Promise<any[]> {
+    const s = sql.toLowerCase();
+
+    if (s.includes('from pc_devices')) {
+      return [...this.data.pc_devices];
+    }
+
+    if (s.includes('from mobile_devices where is_revoked = 0')) {
+      return this.data.mobile_devices.filter((m) => m.is_revoked === 0);
+    }
+
+    if (s.includes('from device_pairings where is_active = 1')) {
+      return this.data.device_pairings.filter((dp) => dp.is_active === 1);
+    }
+
+    if (s.includes('from audit_logs')) {
+      return [...this.data.audit_logs].reverse().slice(0, 50);
+    }
+
+    return [];
+  }
+
+  async run(sql: string, params: any[] = []): Promise<{ lastID?: number; changes?: number }> {
+    const s = sql.toLowerCase();
+
+    if (s.includes('insert into users')) {
+      const [id, email, password_hash] = params;
+      this.data.users.push({ id, email, password_hash, created_at: new Date().toISOString() });
+      this.persist();
+      return { changes: 1 };
+    }
+
+    if (s.includes('insert into pc_devices')) {
+      const [id, user_id, device_name, pc_number, pc_public_key, hardware_uuid, is_online, lock_status] = params;
+      this.data.pc_devices.push({
+        id,
+        user_id: user_id || 'user_demo_1',
+        device_name: device_name || 'Cyber Terminal',
+        pc_number: pc_number || `PC-0${this.data.pc_devices.length + 1}`,
+        admin_pin: '998877',
+        pc_public_key: pc_public_key || 'PUBKEY',
+        hardware_uuid: hardware_uuid || id,
+        is_online: is_online !== undefined ? is_online : 1,
+        lock_status: lock_status || 'LOCKED',
+        created_at: new Date().toISOString(),
+      });
+      this.persist();
+      return { changes: 1 };
+    }
+
+    if (s.includes('update pc_devices set is_online =')) {
+      const is_online = params[0];
+      const id = params[1];
+      const pc = this.data.pc_devices.find((p) => p.id === id);
+      if (pc) {
+        pc.is_online = is_online;
+        pc.last_seen_at = new Date().toISOString();
+        this.persist();
+      }
+      return { changes: 1 };
+    }
+
+    if (s.includes('update pc_devices set lock_status =')) {
+      const lock_status = params[0];
+      const id = params[1];
+      const pc = this.data.pc_devices.find((p) => p.id === id);
+      if (pc) {
+        pc.lock_status = lock_status;
+        pc.last_seen_at = new Date().toISOString();
+        this.persist();
+      }
+      return { changes: 1 };
+    }
+
+    if (s.includes('update pc_devices set admin_pin =')) {
+      const admin_pin = params[0];
+      const id = params[1];
+      const pc = this.data.pc_devices.find((p) => p.id === id);
+      if (pc) {
+        pc.admin_pin = admin_pin;
+        this.persist();
+      }
+      return { changes: 1 };
+    }
+
+    if (s.includes('update pc_devices set device_name =')) {
+      const [device_name, pc_public_key, id] = params;
+      const pc = this.data.pc_devices.find((p) => p.id === id);
+      if (pc) {
+        pc.device_name = device_name;
+        pc.pc_public_key = pc_public_key;
+        pc.is_online = 1;
+        this.persist();
+      }
+      return { changes: 1 };
+    }
+
+    if (s.includes('insert into mobile_devices')) {
+      const [id, user_id, device_name, mobile_public_key, device_token] = params;
+      this.data.mobile_devices.push({
+        id,
+        user_id,
+        device_name,
+        mobile_public_key,
+        device_token,
+        is_revoked: 0,
+        created_at: new Date().toISOString(),
+      });
+      this.persist();
+      return { changes: 1 };
+    }
+
+    if (s.includes('insert or replace into device_pairings') || s.includes('insert into device_pairings')) {
+      const [id, pc_id, mobile_id] = params;
+      const existing = this.data.device_pairings.find((dp) => dp.pc_id === pc_id && dp.mobile_id === mobile_id);
+      if (existing) {
+        existing.is_active = 1;
+      } else {
+        this.data.device_pairings.push({ id, pc_id, mobile_id, is_active: 1, paired_at: new Date().toISOString() });
+      }
+      this.persist();
+      return { changes: 1 };
+    }
+
+    if (s.includes('insert into audit_logs')) {
+      const [id, pc_id, mobile_id, event_type, status, details] = params;
+      this.data.audit_logs.push({
+        id,
+        pc_id,
+        mobile_id: details ? mobile_id : undefined,
+        event_type: details ? event_type : (params[2] || 'EVENT'),
+        status: details ? status : (params[3] || 'SUCCESS'),
+        details: details || params[4] || '',
+        created_at: new Date().toISOString(),
+      });
+      this.persist();
+      return { changes: 1 };
+    }
+
+    return { changes: 0 };
+  }
+
+  async exec(sql: string): Promise<void> {
+    // Schema initialized in-memory & file
+  }
+}
 
 let dbInstance: Database | null = null;
 
 export async function getDb(): Promise<Database> {
-  if (dbInstance) return dbInstance;
-
-  const dbPath = path.join(__dirname, '../security_relay.db');
-  dbInstance = await open({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
-
-  await initDbSchema(dbInstance);
+  if (!dbInstance) {
+    dbInstance = new JsonDatabase();
+    console.log('[DB] High-Performance Zero-Dependency Database Engine Active.');
+  }
   return dbInstance;
 }
-
-async function initDbSchema(db: Database) {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS pc_devices (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      device_name TEXT NOT NULL,
-      pc_number TEXT DEFAULT 'PC-01',
-      mac_address TEXT,
-      admin_pin TEXT DEFAULT '998877',
-      pc_public_key TEXT NOT NULL,
-      hardware_uuid TEXT UNIQUE NOT NULL,
-      is_online INTEGER DEFAULT 0,
-      lock_status TEXT DEFAULT 'LOCKED',
-      last_seen_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS mobile_devices (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      device_name TEXT NOT NULL,
-      mobile_public_key TEXT NOT NULL,
-      device_token TEXT,
-      is_revoked INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS device_pairings (
-      id TEXT PRIMARY KEY,
-      pc_id TEXT NOT NULL,
-      mobile_id TEXT NOT NULL,
-      paired_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      is_active INTEGER DEFAULT 1,
-      UNIQUE(pc_id, mobile_id),
-      FOREIGN KEY (pc_id) REFERENCES pc_devices(id) ON DELETE CASCADE,
-      FOREIGN KEY (mobile_id) REFERENCES mobile_devices(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id TEXT PRIMARY KEY,
-      pc_id TEXT,
-      mobile_id TEXT,
-      event_type TEXT NOT NULL,
-      status TEXT NOT NULL,
-      ip_address TEXT,
-      details TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  // Ensure admin_pin column exists for existing databases
-  try {
-    await db.exec(`ALTER TABLE pc_devices ADD COLUMN admin_pin TEXT DEFAULT '998877'`);
-  } catch {}
-
-  // Pre-seed sample Cyber Cafe terminals if empty
-  const count = await db.get('SELECT COUNT(*) as cnt FROM pc_devices');
-  if (count && count.cnt === 0) {
-    await db.exec(`
-      INSERT INTO pc_devices (id, user_id, device_name, pc_number, mac_address, admin_pin, pc_public_key, hardware_uuid, is_online, lock_status)
-      VALUES 
-        ('pc_dev_01', 'user_demo_1', 'Cyber Gaming Terminal 1', 'PC-01', 'AA:BB:CC:DD:EE:01', '123456', 'PUBKEY_01', 'HW_UUID_01', 1, 'LOCKED'),
-        ('pc_dev_02', 'user_demo_1', 'Cyber Gaming Terminal 2', 'PC-02', 'AA:BB:CC:DD:EE:02', '654321', 'PUBKEY_02', 'HW_UUID_02', 0, 'LOCKED'),
-        ('pc_dev_03', 'user_demo_1', 'Cyber Gaming Terminal 3', 'PC-03', 'AA:BB:CC:DD:EE:03', '998877', 'PUBKEY_03', 'HW_UUID_03', 1, 'UNLOCKED'),
-        ('pc_dev_04', 'user_demo_1', 'Cyber Gaming Terminal 4', 'PC-04', 'AA:BB:CC:DD:EE:04', '778899', 'PUBKEY_04', 'HW_UUID_04', 0, 'LOCKED');
-
-      INSERT OR IGNORE INTO mobile_devices (id, user_id, device_name, mobile_public_key, is_revoked)
-      VALUES ('mob_dev_8f7a1c', 'user_demo_1', 'Admin Master Controller Phone', '3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e', 0);
-
-      INSERT OR IGNORE INTO device_pairings (id, pc_id, mobile_id, is_active)
-      VALUES 
-        ('pair_01', 'pc_dev_01', 'mob_dev_8f7a1c', 1),
-        ('pair_02', 'pc_dev_02', 'mob_dev_8f7a1c', 1),
-        ('pair_03', 'pc_dev_03', 'mob_dev_8f7a1c', 1),
-        ('pair_04', 'pc_dev_04', 'mob_dev_8f7a1c', 1);
-    `);
-  }
-
-  console.log('[DB] Database schema initialized with Custom Admin PIN & Pairing support.');
-}
-
-
-

@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "pc-security-backend",
   "version": "1.0.0",
   "description": "Secure Relay and Authentication Server for PC Remote Security System",
@@ -19,10 +19,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^6.0.1",
     "typescript": "^5.4.5",
-    "uuid": "^14.0.2",
+    "uuid": "^9.0.1",
     "ws": "^8.17.0"
   },
   "devDependencies": {
