@@ -88,11 +88,35 @@ namespace PC.SecurityAgent.Network
             if (payload.Action == "LOCK_PC")
             {
                 LockController.LockPC();
+                _ = SendStatusUpdateAsync("LOCKED");
             }
             else if (payload.Action == "UNLOCK_PC")
             {
                 LockController.UnlockPC();
+                _ = SendStatusUpdateAsync("UNLOCKED");
+            }
+        }
+
+        private async Task SendStatusUpdateAsync(string newStatus)
+        {
+            if (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                try
+                {
+                    var msg = new
+                    {
+                        event_type = "PC_STATUS_REPORT",
+                        pc_id = _pcDeviceId,
+                        lock_status = newStatus,
+                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                    string json = JsonSerializer.Serialize(msg);
+                    byte[] bytes = Encoding.UTF8.GetBytes(json);
+                    await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+                catch { }
             }
         }
     }
 }
+

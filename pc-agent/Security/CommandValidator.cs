@@ -35,7 +35,7 @@ namespace PC.SecurityAgent.Security
 
     public class CommandValidator
     {
-        private static readonly HashSet<string> UsedNonces = new();
+        private static readonly Dictionary<string, long> UsedNonces = new();
 
         public static (bool IsValid, string Reason) ValidatePayload(CommandPayload payload, string trustedMobilePublicKeyHex)
         {
@@ -46,15 +46,27 @@ namespace PC.SecurityAgent.Security
                 return (false, $"Timestamp skew error ({Math.Abs(currentUnixTime - payload.Timestamp)}s)");
             }
 
-            // 2. Anti-Replay Nonce Check
+            // 2. Anti-Replay Nonce Check & Auto-prune
             lock (UsedNonces)
             {
-                if (UsedNonces.Contains(payload.Nonce))
+                // Prune nonces older than 5 minutes (300 seconds)
+                if (UsedNonces.Count > 500)
+                {
+                    List<string> expired = new();
+                    foreach (var kvp in UsedNonces)
+                    {
+                        if (currentUnixTime - kvp.Value > 300) expired.Add(kvp.Key);
+                    }
+                    foreach (var k in expired) UsedNonces.Remove(k);
+                }
+
+                if (UsedNonces.ContainsKey(payload.Nonce))
                 {
                     return (false, "Anti-Replay Violation: Nonce already processed");
                 }
-                UsedNonces.Add(payload.Nonce);
+                UsedNonces[payload.Nonce] = currentUnixTime;
             }
+
 
             // 3. Signature Verification
             string canonicalStr = $"{payload.Version}:{payload.CommandId}:{payload.SenderDeviceId}:{payload.TargetPcId}:{payload.Action}:{payload.Timestamp}:{payload.Nonce}";

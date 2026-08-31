@@ -210,34 +210,57 @@
     <div class="status-bar">
       <div style="display: flex; align-items: center; gap: 8px;">
         <div class="pulse-dot"></div>
-        <span>TRUSTED MOBILE CONTROLLER</span>
+        <span>TRUSTED CONTROLLER</span>
       </div>
-      <span id="clockTime">00:00</span>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button onclick="configureCloudServer()" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--primary); font-size: 10px; padding: 2px 6px; border-radius: 6px; cursor: pointer;">🌐 Server</button>
+        <span id="clockTime">00:00</span>
+      </div>
     </div>
+
 
     <div class="pc-card">
       <div class="pc-header">
-        <div class="pc-name" id="pcName">WORKSTATION-MAIN</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <select id="pcSelector" onchange="onTerminalSelect(this.value)" style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--card-border); color: #fff; padding: 6px 10px; border-radius: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;">
+            <option value="pc_dev_01">TERMINAL [PC-01]</option>
+            <option value="pc_dev_02">TERMINAL [PC-02]</option>
+            <option value="pc_dev_03">TERMINAL [PC-03]</option>
+            <option value="pc_dev_04">TERMINAL [PC-04]</option>
+          </select>
+        </div>
         <span class="badge badge-online" id="pcOnlineBadge">ONLINE</span>
       </div>
 
       <div class="lock-state-box">
-        <span class="state-title">PC Security Status</span>
-        <div class="state-value unlocked" id="lockStateText">UNLOCKED</div>
+        <span class="state-title">Pre-Boot & Desktop Security Status</span>
+        <div class="state-value locked" id="lockStateText">LOCKED</div>
+        <div id="prebootInfo" style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #f87171; margin-top: 4px;">
+          🛑 UEFI BOOT BLOCKED (Pre-Boot Lock Active)
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; padding: 6px 10px; background: rgba(0,0,0,0.3); border-radius: 8px;">
+        <span>ADMIN EMERGENCY PIN:</span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span id="adminPinDisplay" style="color: #facc15; font-weight: 700;">123456</span>
+          <button onclick="changeTerminalPin()" style="background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--primary); font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Edit</button>
+        </div>
       </div>
     </div>
 
     <!-- Main Action Button -->
-    <button class="action-btn btn-lock" id="actionBtn" onclick="onActionButtonClick()">
-      <span>🔒 LOCK PC</span>
+    <button class="action-btn btn-unlock" id="actionBtn" onclick="onActionButtonClick()">
+      <span>🔓 UNLOCK TERMINAL & BOOT</span>
     </button>
+
 
     <!-- Audit Event Log -->
     <div class="pc-card">
-      <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">Security Audit Log</div>
+      <div style="font-size: 12px; font-weight: 700; color: #fff; margin-bottom: 4px;">Cyber Cafe Terminal Log</div>
       <div class="audit-log" id="auditLog">
-        <div class="log-item"><span>Connected to Relay Gateway</span><span>NOW</span></div>
-        <div class="log-item"><span>Ed25519 Keystore Initialized</span><span>OK</span></div>
+        <div class="log-item"><span>Pre-Boot Gate Active</span><span>READY</span></div>
+        <div class="log-item"><span>Relay Gateway Connected</span><span>NOW</span></div>
       </div>
     </div>
 
@@ -246,7 +269,7 @@
       <div class="fp-icon">👆</div>
       <div style="text-align: center;">
         <h3 style="color:#fff; margin-bottom: 4px;">Biometric Verification</h3>
-        <p style="font-size: 13px; color: var(--text-muted);">Touch fingerprint sensor or use Face ID to authorize PC unlock</p>
+        <p style="font-size: 13px; color: var(--text-muted);">Touch fingerprint sensor or Face ID to unlock PC for customer</p>
       </div>
       <button onclick="approveBiometrics()" style="background: var(--primary); border: none; padding: 12px 24px; border-radius: 12px; font-weight:700; color:#0f172a; cursor:pointer;">
         Simulate Biometric Success
@@ -254,15 +277,38 @@
     </div>
   </div>
 
+
   <script>
-    // Configuration
-    const RELAY_WS_URL = 'ws://localhost:4000';
+    // Configuration with LocalStorage persistence for Cloud Server
+    let RELAY_WS_URL = localStorage.getItem('pc_lock_server_url') || 'ws://localhost:4000';
     const MOBILE_DEVICE_ID = 'mob_dev_8f7a1c';
-    const TARGET_PC_ID = 'pc_dev_main';
 
     let ws = null;
     let isLocked = false;
     let mobileKeyPair = null;
+
+    function configureCloudServer() {
+      const current = localStorage.getItem('pc_lock_server_url') || RELAY_WS_URL;
+      let newUrl = prompt('Enter your Online Cloud Server URL (e.g., https://my-cyber-lock.onrender.com or wss://...):', current);
+      if (newUrl && newUrl.trim() !== '') {
+        newUrl = newUrl.trim();
+        // Automatically convert https:// to wss:// and http:// to ws://
+        if (newUrl.startsWith('https://')) {
+          newUrl = newUrl.replace('https://', 'wss://');
+        } else if (newUrl.startsWith('http://')) {
+          newUrl = newUrl.replace('http://', 'ws://');
+        } else if (!newUrl.startsWith('ws://') && !newUrl.startsWith('wss://')) {
+          newUrl = 'wss://' + newUrl;
+        }
+
+        RELAY_WS_URL = newUrl;
+        localStorage.setItem('pc_lock_server_url', RELAY_WS_URL);
+        if (ws) ws.close();
+        connectRelay();
+        addLog(`Server URL set to: ${RELAY_WS_URL}`, 'CONFIG');
+      }
+    }
+
 
     // Initialize WebCrypto Ed25519 Keys
     async function initCrypto() {
@@ -279,7 +325,13 @@
     }
 
     function connectRelay() {
-      ws = new WebSocket(`${RELAY_WS_URL}?device_id=${MOBILE_DEVICE_ID}&device_type=MOBILE`);
+      try {
+        ws = new WebSocket(`${RELAY_WS_URL}?device_id=${MOBILE_DEVICE_ID}&device_type=MOBILE`);
+      } catch (e) {
+        addLog(`Connection error: ${e.message}`, 'ERROR');
+        return;
+      }
+
 
       ws.onopen = () => {
         addLog('Relay Server Connected', 'ONLINE');
@@ -312,12 +364,13 @@
         version: "1.0",
         command_id: crypto.randomUUID(),
         sender_device_id: MOBILE_DEVICE_ID,
-        target_pc_id: TARGET_PC_ID,
+        target_pc_id: currentPcId,
         action: action,
         timestamp: Math.floor(Date.now() / 1000),
         nonce: Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
         signature: "3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e"
       };
+
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
@@ -345,23 +398,83 @@
       addLog('Biometric Auth Approved', 'AUTH_OK');
     }
 
+    let currentPcId = 'pc_dev_01';
+    const pcPins = {
+      'pc_dev_01': '123456',
+      'pc_dev_02': '654321',
+      'pc_dev_03': '998877',
+      'pc_dev_04': '778899'
+    };
+
+    function onTerminalSelect(pcId) {
+      currentPcId = pcId;
+      document.getElementById('adminPinDisplay').innerText = pcPins[pcId] || '998877';
+      addLog(`Switched control to ${pcId}`, 'SELECT');
+    }
+
+    function getHttpApiBaseUrl() {
+      let url = RELAY_WS_URL;
+      if (url.startsWith('wss://')) {
+        return url.replace('wss://', 'https://');
+      } else if (url.startsWith('ws://')) {
+        return url.replace('ws://', 'http://');
+      }
+      return url;
+    }
+
+    async function changeTerminalPin() {
+      const current = pcPins[currentPcId] || '998877';
+      const newPin = prompt(`Set new 6-digit Emergency PIN for ${currentPcId}:`, current);
+      if (!newPin || newPin.trim() === '' || newPin === current) return;
+
+      try {
+        const apiBase = getHttpApiBaseUrl();
+        const res = await fetch(`${apiBase}/api/devices/pc/set-pin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pcId: currentPcId, adminPin: newPin.trim() })
+        });
+        if (res.ok) {
+          pcPins[currentPcId] = newPin.trim();
+          document.getElementById('adminPinDisplay').innerText = newPin.trim();
+          addLog(`Updated PIN for ${currentPcId} to ${newPin.trim()}`, 'PIN_OK');
+        }
+      } catch (e) {
+        pcPins[currentPcId] = newPin.trim();
+        document.getElementById('adminPinDisplay').innerText = newPin.trim();
+        addLog(`PIN updated locally: ${newPin.trim()}`, 'PIN_LOCAL');
+      }
+    }
+
+
+
     function updateLockUI(locked) {
       isLocked = locked;
       const textEl = document.getElementById('lockStateText');
+      const prebootEl = document.getElementById('prebootInfo');
       const btn = document.getElementById('actionBtn');
 
       if (locked) {
         textEl.className = 'state-value locked';
         textEl.innerText = 'LOCKED';
+        if (prebootEl) {
+          prebootEl.innerText = '🛑 UEFI BOOT BLOCKED (Pre-Boot Lock Active)';
+          prebootEl.style.color = '#f87171';
+        }
         btn.className = 'action-btn btn-unlock';
-        btn.innerHTML = '<span>🔓 UNLOCK PC</span>';
+        btn.innerHTML = '<span>🔓 UNLOCK TERMINAL & BOOT</span>';
       } else {
         textEl.className = 'state-value unlocked';
         textEl.innerText = 'UNLOCKED';
+        if (prebootEl) {
+          prebootEl.innerText = '🟢 UEFI BOOT AUTHORIZED (Windows Ready)';
+          prebootEl.style.color = '#34d399';
+        }
         btn.className = 'action-btn btn-lock';
-        btn.innerHTML = '<span>🔒 LOCK PC</span>';
+        btn.innerHTML = '<span>🔒 LOCK TERMINAL</span>';
       }
     }
+
 
     function addLog(msg, type) {
       const logBox = document.getElementById('auditLog');

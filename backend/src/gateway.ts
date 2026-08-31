@@ -27,13 +27,24 @@ export class RelayGateway {
     ws.on('message', async (data: WebSocket.RawData) => {
       try {
         const messageStr = data.toString('utf-8');
-        const payload: SignedPayload = JSON.parse(messageStr);
+        const parsed = JSON.parse(messageStr);
+
+        if (parsed.event_type === 'PC_STATUS_REPORT' && parsed.pc_id && parsed.lock_status) {
+          const db = await getDb();
+          await db.run('UPDATE pc_devices SET lock_status = ?, last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [parsed.lock_status, parsed.pc_id]);
+          this.notifyMobileStateChange(parsed.pc_id, parsed.lock_status);
+          console.log(`[WSS Relay] PC ${parsed.pc_id} reported status: ${parsed.lock_status}`);
+          return;
+        }
+
+        const payload: SignedPayload = parsed;
         await this.processMessage(client, payload);
       } catch (err: any) {
         console.error('[WSS Relay] Error parsing message:', err.message);
         ws.send(JSON.stringify({ status: 'ERROR', message: 'Malformed JSON payload' }));
       }
     });
+
 
     ws.on('close', () => {
       console.log(`[WSS Relay] Client disconnected: ${deviceType} ID=${deviceId}`);
@@ -123,7 +134,19 @@ export class RelayGateway {
 
   private async updatePcOnlineState(pcId: string, isOnline: number) {
     const db = await getDb();
-    await db.run('UPDATE pc_devices SET is_online = ?, last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [isOnline, pcId]);
+    const existing = await db.get('SELECT * FROM pc_devices WHERE id = ?', [pcId]);
+    if (existing) {
+      await db.run('UPDATE pc_devices SET is_online = ?, last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [isOnline, pcId]);
+    } else {
+      // Auto-register newly discovered PC workstation
+      const count = await db.get('SELECT COUNT(*) as cnt FROM pc_devices');
+      const num = `PC-0${(count?.cnt || 0) + 1}`;
+      await db.run(
+        `INSERT INTO pc_devices (id, user_id, device_name, pc_number, pc_public_key, hardware_uuid, is_online, lock_status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [pcId, 'user_demo_1', `Cyber Workstation (${pcId})`, num, 'PUBKEY_AUTO', pcId, isOnline, 'UNLOCKED']
+      );
+    }
   }
 
   private async logAudit(pcId: string, mobileId: string, eventType: string, status: string, details: string) {
@@ -134,3 +157,4 @@ export class RelayGateway {
     );
   }
 }
+
