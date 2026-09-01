@@ -1,0 +1,29 @@
+﻿[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = WpbtDxeDriver
+  FILE_GUID                      = 54425057-1234-5678-9ABC-DEF012345678
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = WpbtDxeDriverEntryPoint
+
+[Sources]
+  wpbt_dxe.c
+  ../src/wpbt_table.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DebugLib
+
+[Protocols]
+  gEfiAcpiTableProtocolGuid                     ## CONSUMES
+
+[Depex]
+  gEfiAcpiTableProtocolGuid

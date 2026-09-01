@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
+using PC.SecurityAgent.Hardware;
 
 namespace PC.SecurityAgent.Security
 {
@@ -31,25 +32,28 @@ namespace PC.SecurityAgent.Security
 
         [JsonPropertyName("signature")]
         public string Signature { get; set; } = string.Empty;
+
+        [JsonPropertyName("public_key")]
+        public string? PublicKey { get; set; }
     }
 
     public class CommandValidator
     {
         private static readonly Dictionary<string, long> UsedNonces = new();
 
-        public static (bool IsValid, string Reason) ValidatePayload(CommandPayload payload, string trustedMobilePublicKeyHex)
+        public static (bool IsValid, string Reason) ValidatePayload(CommandPayload payload, string fallbackPublicKeyHex)
         {
-            // 1. Check Timestamp Skew (Max 60 Seconds)
+            // 1. Timestamp Freshness Check (Max 60 Seconds Skew)
             long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (Math.Abs(currentUnixTime - payload.Timestamp) > 60)
+            long timeDiff = Math.Abs(currentUnixTime - payload.Timestamp);
+            if (timeDiff > 60)
             {
-                return (false, $"Timestamp skew error ({Math.Abs(currentUnixTime - payload.Timestamp)}s)");
+                return (false, $"Timestamp skew error: {timeDiff}s skew exceeds allowable 60s window");
             }
 
-            // 2. Anti-Replay Nonce Check & Auto-prune
+            // 2. Anti-Replay Nonce Check & Cache Pruning
             lock (UsedNonces)
             {
-                // Prune nonces older than 5 minutes (300 seconds)
                 if (UsedNonces.Count > 500)
                 {
                     List<string> expired = new();
@@ -62,31 +66,78 @@ namespace PC.SecurityAgent.Security
 
                 if (UsedNonces.ContainsKey(payload.Nonce))
                 {
-                    return (false, "Anti-Replay Violation: Nonce already processed");
+                    return (false, "Anti-Replay Attack Detected: Nonce already processed");
                 }
                 UsedNonces[payload.Nonce] = currentUnixTime;
             }
 
-
-            // 3. Signature Verification
+            // 3. Construct Canonical Data String
             string canonicalStr = $"{payload.Version}:{payload.CommandId}:{payload.SenderDeviceId}:{payload.TargetPcId}:{payload.Action}:{payload.Timestamp}:{payload.Nonce}";
             byte[] dataBytes = Encoding.UTF8.GetBytes(canonicalStr);
 
+            if (string.IsNullOrWhiteSpace(payload.Signature))
+            {
+                return (false, "Missing cryptographic signature");
+            }
+
+            // 4. Hardware-Pinned DPAPI Trust Store Resolution
+            string? pinnedKey = DpapiTrustStore.GetPinnedMobilePublicKey(payload.SenderDeviceId);
+
+            if (string.IsNullOrWhiteSpace(pinnedKey))
+            {
+                if (!DpapiTrustStore.HasPinnedDevice())
+                {
+                    // First-Time Pairing Enrollment: Validate and pin initial owner's key into Windows DPAPI
+                    string keyToPin = !string.IsNullOrWhiteSpace(payload.PublicKey) 
+                        ? payload.PublicKey 
+                        : fallbackPublicKeyHex;
+
+                    if (!string.IsNullOrWhiteSpace(keyToPin))
+                    {
+                        var (isKeyValid, keyReason) = VerifySignatureBytes(dataBytes, payload.Signature, keyToPin);
+                        if (isKeyValid)
+                        {
+                            DpapiTrustStore.PinTrustedMobileDevice(payload.SenderDeviceId, keyToPin);
+                            return (true, "Initial pairing verified: Owner mobile key pinned to Windows DPAPI Trust Store");
+                        }
+                        return (false, "Initial pairing verification failed: " + keyReason);
+                    }
+                    return (true, "Valid payload structure (Unpinned initial setup mode)");
+                }
+                else
+                {
+                    return (false, $"Access Denied: Sender device '{payload.SenderDeviceId}' is not authorized in the PC Hardware DPAPI Trust Store");
+                }
+            }
+
+            // 5. Verify Cryptographic Digital Signature strictly against DPAPI Pinned Key
+            return VerifySignatureBytes(dataBytes, payload.Signature, pinnedKey);
+        }
+
+        private static (bool IsValid, string Reason) VerifySignatureBytes(byte[] dataBytes, string signatureHex, string publicKeyHex)
+        {
             try
             {
-                // In production mode, parse public key and verify ECDsa / Ed25519 signature
-                byte[] sigBytes = Convert.FromHexString(payload.Signature);
-                if (sigBytes.Length > 0)
+                byte[] sigBytes = Convert.FromHexString(signatureHex);
+                byte[] pubKeyBytes = Convert.FromHexString(publicKeyHex);
+
+                using var ecdsa = ECDsa.Create();
+                ecdsa.ImportSubjectPublicKeyInfo(pubKeyBytes, out _);
+
+                bool verified = ecdsa.VerifyData(dataBytes, sigBytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcat);
+                if (!verified)
                 {
-                    return (true, "Signature verified");
+                    verified = ecdsa.VerifyData(dataBytes, sigBytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
                 }
+
+                return verified 
+                    ? (true, "Cryptographic digital signature verified with DPAPI Trust Store") 
+                    : (false, "Cryptographic signature mismatch against DPAPI pinned key");
             }
             catch (Exception ex)
             {
-                return (false, $"Cryptographic verification failure: {ex.Message}");
+                return (false, $"Cryptographic validation error: {ex.Message}");
             }
-
-            return (true, "Command verified");
         }
     }
 }

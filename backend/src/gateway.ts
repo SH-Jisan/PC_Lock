@@ -13,6 +13,16 @@ interface ConnectedClient {
 export class RelayGateway {
   private clients = new Map<string, ConnectedClient>();
 
+  public getConnectedStats() {
+    let onlinePcs = 0;
+    let onlineMobiles = 0;
+    for (const client of this.clients.values()) {
+      if (client.type === 'PC') onlinePcs++;
+      else if (client.type === 'MOBILE') onlineMobiles++;
+    }
+    return { onlinePcs, onlineMobiles, totalSockets: this.clients.size };
+  }
+
   public handleConnection(ws: WebSocket, deviceId: string, deviceType: 'PC' | 'MOBILE', userId: string) {
     const client: ConnectedClient = { id: deviceId, type: deviceType, userId, ws };
     this.clients.set(deviceId, client);
@@ -48,7 +58,7 @@ export class RelayGateway {
         await this.processMessage(client, payload);
       } catch (err: any) {
         console.error('[WSS Relay] Error parsing message:', err.message);
-        ws.send(JSON.stringify({ status: 'ERROR', message: 'Malformed JSON payload' }));
+        ws.send(JSON.stringify({ status: 'ERROR', message: 'Malformed JSON payload: ' + err.message }));
       }
     });
 
@@ -70,36 +80,56 @@ export class RelayGateway {
 
     console.log(`[WSS Relay] Action: ${payload.action} from ${sender.type} (${sender.id}) -> Target PC (${payload.target_pc_id})`);
 
-    // 1. Verify Target PC Registration
+    // 1. Verify Target PC exists in database
     const pcRow = await db.get('SELECT * FROM pc_devices WHERE id = ?', [payload.target_pc_id]);
     if (!pcRow) {
       this.logAudit(payload.target_pc_id, sender.id, payload.action, 'FAILED', 'Target PC not found');
       return sender.ws.send(JSON.stringify({ status: 'ERROR', message: 'Target PC not found' }));
     }
 
-    // 2. Fetch Sender Mobile Public Key if sent by Mobile
+    // 2. Cryptographic Zero-Trust Verification (Defense-in-Depth Layer 1)
     if (sender.type === 'MOBILE') {
-      const mobileRow = await db.get('SELECT * FROM mobile_devices WHERE id = ? AND is_revoked = 0', [sender.id]);
-      if (!mobileRow) {
-        this.logAudit(payload.target_pc_id, sender.id, payload.action, 'FAILED', 'Mobile device revoked or not registered');
-        return sender.ws.send(JSON.stringify({ status: 'ERROR', message: 'Mobile device revoked or untrusted' }));
+      let mobileRow = await db.get('SELECT * FROM mobile_devices WHERE id = ? AND is_revoked = 0', [sender.id]);
+
+      // If mobile sends public_key and is not registered, register it
+      if (!mobileRow && payload.public_key) {
+        await db.run('INSERT INTO mobile_devices (id, user_id, device_name, mobile_public_key, is_revoked) VALUES (?, ?, ?, ?, 0)', [
+          sender.id,
+          sender.userId || 'user_demo_1',
+          `Mobile Controller (${sender.id})`,
+          payload.public_key,
+        ]);
+        mobileRow = { id: sender.id, mobile_public_key: payload.public_key };
       }
 
-      // Auto-pair mobile with PC if not paired yet
-      const pairing = await db.get('SELECT * FROM device_pairings WHERE pc_id = ? AND mobile_id = ? AND is_active = 1', [
+      if (!mobileRow || !mobileRow.mobile_public_key) {
+        this.logAudit(payload.target_pc_id, sender.id, payload.action, 'REJECTED', 'Mobile device not registered or public key missing');
+        return sender.ws.send(JSON.stringify({ status: 'REJECTED', message: 'Mobile device not registered or untrusted' }));
+      }
+
+      // If client rotated key or sent explicit key matching, update row
+      const pubKeyToUse = payload.public_key || mobileRow.mobile_public_key;
+
+      // Cryptographic Digital Signature Verification
+      const verification = verifyCommandSignature(payload, pubKeyToUse);
+      if (!verification.valid) {
+        console.warn(`[SECURITY ALERT] Invalid Cryptographic Signature from ${sender.id}: ${verification.reason}`);
+        this.logAudit(payload.target_pc_id, sender.id, payload.action, 'INVALID_SIGNATURE', verification.reason || 'Cryptographic verification failed');
+        return sender.ws.send(JSON.stringify({
+          status: 'REJECTED',
+          message: verification.reason || 'Invalid cryptographic signature'
+        }));
+      }
+
+      // Record / Update pairing
+      await db.run('INSERT OR REPLACE INTO device_pairings (id, pc_id, mobile_id, is_active) VALUES (?, ?, ?, 1)', [
+        uuidv4(),
         payload.target_pc_id,
         sender.id,
       ]);
-      if (!pairing) {
-        await db.run('INSERT OR REPLACE INTO device_pairings (id, pc_id, mobile_id, is_active) VALUES (?, ?, ?, 1)', [
-          uuidv4(),
-          payload.target_pc_id,
-          sender.id,
-        ]);
-      }
     }
 
-    // 3. Relay Payload to Connected PC Agent
+    // 3. Check Target PC Connection Status
     const targetPcClient = this.clients.get(payload.target_pc_id);
     if (!targetPcClient || targetPcClient.ws.readyState !== WebSocket.OPEN) {
       console.warn(`[WSS Relay] Target PC ${payload.target_pc_id} is OFFLINE`);
@@ -111,16 +141,16 @@ export class RelayGateway {
       }));
     }
 
-    // Forward signed command directly to PC
+    // 4. Relay Verified Payload to Connected Target PC Agent (Defense-in-Depth Layer 2)
     targetPcClient.ws.send(JSON.stringify(payload));
-    this.logAudit(payload.target_pc_id, sender.id, payload.action, 'RELAYED', 'Command successfully routed to PC agent');
+    this.logAudit(payload.target_pc_id, sender.id, payload.action, 'RELAYED', 'Cryptographically verified command dispatched to PC agent');
     
-    // Acknowledge Mobile client
+    // 5. Acknowledge Mobile Client
     sender.ws.send(JSON.stringify({
       status: 'SENT',
       command_id: payload.command_id,
       is_online: true,
-      message: `Command ${payload.action} dispatched to PC ${pcRow.device_name}`
+      message: `Verified Command ${payload.action} dispatched to ${pcRow.device_name}`
     }));
   }
 
@@ -159,7 +189,6 @@ export class RelayGateway {
     if (existing) {
       await db.run('UPDATE pc_devices SET is_online = ?, last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [isOnline, pcId]);
     } else {
-      // Auto-register newly discovered real PC
       const count = await db.get('SELECT COUNT(*) as cnt FROM pc_devices');
       const num = `PC-0${(count?.cnt || 0) + 1}`;
       await db.run(

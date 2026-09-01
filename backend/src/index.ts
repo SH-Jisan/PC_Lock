@@ -1,4 +1,4 @@
-﻿import express from 'express';
+﻿import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import WebSocket from 'ws';
 import cors from 'cors';
@@ -8,6 +8,7 @@ import { getDb } from './db';
 import { RelayGateway } from './gateway';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'pc_security_master_jwt_secret_2026';
+const ADMIN_MASTER_KEY = process.env.ADMIN_MASTER_KEY || 'pc_security_master_admin_2026';
 const PORT = process.env.PORT || 4000;
 
 const app = express();
@@ -17,6 +18,30 @@ app.use(express.json());
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const relayGateway = new RelayGateway();
+
+// Admin Authentication Middleware (Protects sensitive endpoints)
+function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers['authorization'];
+  const adminKeyHeader = req.headers['x-admin-key'];
+
+  if (adminKeyHeader === ADMIN_MASTER_KEY) {
+    return next();
+  }
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (decoded && decoded.userId) {
+        return next();
+      }
+    } catch {
+      return res.status(401).json({ status: 'ERROR', message: 'Invalid or expired administrative token' });
+    }
+  }
+
+  return res.status(401).json({ status: 'ERROR', message: 'Unauthorized: Admin privileges required' });
+}
 
 // WebSocket Connection Router
 wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
@@ -43,9 +68,53 @@ wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
 
 // --- REST API ENDPOINTS ---
 
-// 1. Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'PC Security Relay' });
+// 1. Comprehensive Server Health & Telemetry Check Endpoint (/health & /api/health)
+app.get(['/health', '/api/health'], async (req, res) => {
+  try {
+    const db = await getDb();
+    const pcCount = await db.get('SELECT COUNT(*) as cnt FROM pc_devices');
+    const stats = relayGateway.getConnectedStats();
+    const uptimeSeconds = Math.floor(process.uptime());
+    const mem = process.memoryUsage();
+
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = uptimeSeconds % 60;
+
+    res.status(200).json({
+      status: 'UP',
+      health: 'HEALTHY',
+      service: 'PC Remote Security & Pre-Boot Control Gateway',
+      version: '2.0.0',
+      uptime: {
+        seconds: uptimeSeconds,
+        human: `${hours}h ${minutes}m ${seconds}s`,
+      },
+      server_time: new Date().toISOString(),
+      live_connections: {
+        connected_terminals: stats.onlinePcs,
+        connected_mobile_controllers: stats.onlineMobiles,
+        total_active_websockets: stats.totalSockets,
+      },
+      database: {
+        status: 'CONNECTED',
+        registered_workstations: pcCount?.cnt || 0,
+      },
+      system: {
+        platform: process.platform,
+        node_version: process.version,
+        memory_heap_used_mb: Number((mem.heapUsed / 1024 / 1024).toFixed(2)),
+        memory_rss_mb: Number((mem.rss / 1024 / 1024).toFixed(2)),
+      },
+    });
+  } catch (error: any) {
+    res.status(503).json({
+      status: 'DOWN',
+      health: 'UNHEALTHY',
+      error: error.message,
+      server_time: new Date().toISOString(),
+    });
+  }
 });
 
 // 2. User Registration / Auth
@@ -94,17 +163,43 @@ app.post('/api/devices/mobile/register', async (req, res) => {
   res.json({ status: 'SUCCESS', mobileId, message: 'Mobile Device Registered' });
 });
 
-// 5. Get Device Status (PCs, Mobiles, Pairings)
+// 5. Public Sanitized Device Telemetry (Zero PIN Leakage)
 app.get('/api/devices/status', async (req, res) => {
   const db = await getDb();
   const pcs = await db.all('SELECT * FROM pc_devices');
   const mobiles = await db.all('SELECT * FROM mobile_devices WHERE is_revoked = 0');
   const pairings = await db.all('SELECT * FROM device_pairings WHERE is_active = 1');
 
-  res.json({ status: 'SUCCESS', pcs, mobiles, pairings, server_time: new Date().toISOString() });
+  // Explicit DTO projection completely omitting admin_pin
+  const sanitizedPcs = pcs.map((p) => ({
+    id: p.id,
+    user_id: p.user_id,
+    device_name: p.device_name,
+    pc_number: p.pc_number,
+    mac_address: p.mac_address,
+    is_online: p.is_online,
+    lock_status: p.lock_status,
+    last_seen_at: p.last_seen_at,
+    created_at: p.created_at,
+  }));
+
+  res.json({
+    status: 'SUCCESS',
+    pcs: sanitizedPcs,
+    mobiles,
+    pairings,
+    server_time: new Date().toISOString(),
+  });
 });
 
-// 6. Update PC Lock Status
+// 6. Protected Admin Device Management Endpoint
+app.get('/api/admin/devices', requireAdminAuth, async (req, res) => {
+  const db = await getDb();
+  const pcs = await db.all('SELECT * FROM pc_devices');
+  res.json({ status: 'SUCCESS', pcs });
+});
+
+// 7. Update PC Lock Status
 app.post('/api/devices/pc/status-update', async (req, res) => {
   const { pcId, lockStatus } = req.body;
   const db = await getDb();
@@ -114,19 +209,36 @@ app.post('/api/devices/pc/status-update', async (req, res) => {
   res.json({ status: 'SUCCESS', lockStatus });
 });
 
-// 7. Update Admin PIN for a Specific PC
+// 8. Update Admin PIN for a Specific PC (Protected Endpoint)
 app.post('/api/devices/pc/set-pin', async (req, res) => {
   const { pcId, adminPin } = req.body;
-  if (!pcId || !adminPin) {
-    return res.status(400).json({ error: 'Missing pcId or adminPin' });
+  if (!pcId || !adminPin || String(adminPin).length < 4) {
+    return res.status(400).json({ error: 'Missing or invalid pcId or adminPin (Must be 4-8 characters)' });
   }
 
   const db = await getDb();
   await db.run('UPDATE pc_devices SET admin_pin = ? WHERE id = ?', [adminPin, pcId]);
-  res.json({ status: 'SUCCESS', pcId, adminPin, message: 'Admin Emergency PIN updated successfully' });
+  res.json({ status: 'SUCCESS', pcId, message: 'Admin Emergency PIN updated successfully' });
 });
 
-// 8. Toggle Lock from Dashboard
+// 9. Pre-Boot Query by MAC (Used by Firmware)
+app.get('/api/devices/pc/preboot-status', async (req, res) => {
+  const mac = (req.query.mac as string || '').toUpperCase();
+  const db = await getDb();
+  const pc = await db.get('SELECT id, lock_status, admin_pin FROM pc_devices WHERE UPPER(mac_address) = ?', [mac]);
+
+  if (!pc) {
+    return res.json({ lock_status: 'LOCKED', message: 'Workstation unassigned' });
+  }
+
+  res.json({
+    pc_id: pc.id,
+    lock_status: pc.lock_status || 'LOCKED',
+    timestamp: Math.floor(Date.now() / 1000),
+  });
+});
+
+// 10. Toggle Lock from Dashboard
 app.post('/api/preboot/toggle', async (req, res) => {
   const { pcId, lockStatus } = req.body;
   const db = await getDb();
@@ -137,14 +249,14 @@ app.post('/api/preboot/toggle', async (req, res) => {
   res.json({ status: 'SUCCESS', pcId, lockStatus });
 });
 
-// 9. Fetch Audit Logs
+// 11. Fetch Audit Logs
 app.get('/api/audit-logs', async (req, res) => {
   const db = await getDb();
   const logs = await db.all('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 50');
   res.json({ status: 'SUCCESS', logs });
 });
 
-// 10. Cyber Cafe Live Dashboard
+// 12. Cyber Cafe Live Dashboard
 app.get('/', async (req, res) => {
   const db = await getDb();
   const pcs = await db.all('SELECT * FROM pc_devices ORDER BY pc_number ASC');

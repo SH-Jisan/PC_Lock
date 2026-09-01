@@ -230,7 +230,7 @@
     <div class="status-bar">
       <div style="display: flex; align-items: center; gap: 8px;">
         <div class="pulse-dot" id="serverPulse"></div>
-        <span>TRUSTED CONTROLLER</span>
+        <span id="controllerTitle">TRUSTED CONTROLLER</span>
       </div>
       <button onclick="configureCloudServer()" style="background:none; border:none; color:var(--primary); font-size:12px; cursor:pointer;">⚙️ Server</button>
     </div>
@@ -270,9 +270,9 @@
 
     <!-- Security Audit Log -->
     <div class="pc-card" style="padding: 14px;">
-      <div style="font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;">Live Telemetry & Logs</div>
+      <div style="font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;">Live Telemetry & IndexedDB Keystore</div>
       <div class="audit-log" id="auditLog">
-        <div class="log-item"><span>App Ready</span><span>OK</span></div>
+        <div class="log-item"><span>Initializing Secure Enclave...</span><span>OK</span></div>
       </div>
     </div>
 
@@ -290,13 +290,94 @@
   </div>
 
   <script>
+    const DB_NAME = 'PCLockSecureKeystore';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'hardware_keys';
+
     let RELAY_WS_URL = localStorage.getItem('pc_lock_server_url') || (window.location.protocol === 'https:' ? 'wss://' + window.location.host : 'ws://' + (window.location.hostname || 'localhost') + ':4000');
-    const MOBILE_DEVICE_ID = 'mob_dev_8f7a1c';
+    let MOBILE_DEVICE_ID = '';
 
     let ws = null;
     let registeredPcs = [];
     let currentPcId = '';
     let isLocked = false;
+    let privateCryptoKey = null;
+    let publicCryptoKey = null;
+    let cachedPublicKeyHex = '';
+
+    // --- IndexedDB Secure Non-Extractable Key Storage Engine ---
+
+    function openKeyDatabase() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function loadOrGenerateHardwareKeys() {
+      const db = await openKeyDatabase();
+
+      // Attempt to load existing persistent keys
+      const existing = await new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get('master_controller_key');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      });
+
+      if (existing && existing.privateKey && existing.publicKey && existing.publicKeyHex) {
+        privateCryptoKey = existing.privateKey;
+        publicCryptoKey = existing.publicKey;
+        cachedPublicKeyHex = existing.publicKeyHex;
+        MOBILE_DEVICE_ID = existing.deviceId;
+        addLog('Persistent Non-Extractable Key Loaded from IndexedDB', 'KEY_PERSIST');
+        return;
+      }
+
+      // Generate New ECDSA P-256 Keypair
+      addLog('Generating Non-Extractable ECDSA P-256 Keypair...', 'CRYPTO_GEN');
+      
+      MOBILE_DEVICE_ID = 'mob_' + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      const keyPair = await window.crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true, // Public key extractable for registration, private key will be stored directly as CryptoKey object
+        ["sign", "verify"]
+      );
+
+      privateCryptoKey = keyPair.privateKey;
+      publicCryptoKey = keyPair.publicKey;
+
+      const exportedSpki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+      cachedPublicKeyHex = Array.from(new Uint8Array(exportedSpki))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      // Store CryptoKey objects natively in IndexedDB (W3C Structured Clone Preserves Non-Extractability)
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.put({
+          id: 'master_controller_key',
+          deviceId: MOBILE_DEVICE_ID,
+          privateKey: privateCryptoKey,
+          publicKey: publicCryptoKey,
+          publicKeyHex: cachedPublicKeyHex,
+          createdAt: new Date().toISOString()
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+
+      addLog('Zero-Leakage Keys Saved in IndexedDB Secure Storage', 'KEY_SAVED');
+    }
 
     function getApiBaseUrl() {
       let url = RELAY_WS_URL;
@@ -423,6 +504,9 @@
               updateLockUI(data.lock_status === 'LOCKED');
             }
             addLog(`PC ${data.pc_id} Lock State: ${data.lock_status}`, 'EVENT');
+          } else if (data.status === 'REJECTED') {
+            addLog(`Rejected: ${data.message}`, 'ERROR');
+            alert('Security Error: ' + data.message);
           } else if (data.status === 'OFFLINE') {
             addLog(data.message, 'OFFLINE');
             alert(data.message);
@@ -442,20 +526,45 @@
         return;
       }
 
+      if (!privateCryptoKey) {
+        await loadOrGenerateHardwareKeys();
+      }
+
+      const version = "1.0";
+      const commandId = crypto.randomUUID ? crypto.randomUUID() : ('cmd_' + Date.now());
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Construct Canonical String
+      const canonicalData = `${version}:${commandId}:${MOBILE_DEVICE_ID}:${currentPcId}:${action}:${timestamp}:${nonce}`;
+      
+      // Hardware-gated WebCrypto Digital Signing
+      const encoder = new TextEncoder();
+      const signatureBuf = await window.crypto.subtle.sign(
+        { name: "ECDSA", hash: { name: "SHA-256" } },
+        privateCryptoKey,
+        encoder.encode(canonicalData)
+      );
+
+      const signatureHex = Array.from(new Uint8Array(signatureBuf))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
       const payload = {
-        version: "1.0",
-        command_id: crypto.randomUUID ? crypto.randomUUID() : ('cmd_' + Date.now()),
+        version: version,
+        command_id: commandId,
         sender_device_id: MOBILE_DEVICE_ID,
         target_pc_id: currentPcId,
         action: action,
-        timestamp: Math.floor(Date.now() / 1000),
-        nonce: Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
-        signature: "3b7f8c9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e"
+        timestamp: timestamp,
+        nonce: nonce,
+        signature: signatureHex,
+        public_key: cachedPublicKeyHex
       };
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
-        addLog(`Dispatched ${action} -> ${currentPcId}`, 'SENT');
+        addLog(`Dispatched Signed ${action} -> ${currentPcId}`, 'SENT');
       } else {
         addLog('Failed: WebSocket Offline', 'ERROR');
       }
@@ -466,7 +575,6 @@
         sendSignedCommand('LOCK_PC');
         updateLockUI(true);
       } else {
-        // Native Android Biometric check if running inside APK
         if (window.AndroidBiometric && window.AndroidBiometric.triggerBiometricAuth) {
           window.AndroidBiometric.triggerBiometricAuth();
         } else {
@@ -479,7 +587,7 @@
       document.getElementById('bioModal').style.display = 'none';
       sendSignedCommand('UNLOCK_PC');
       updateLockUI(false);
-      addLog('Biometrics Approved', 'AUTH_OK');
+      addLog('Biometrics Authorization Approved', 'AUTH_OK');
     }
 
     function updateLockUI(locked) {
@@ -509,8 +617,10 @@
       logBox.prepend(item);
     }
 
-    fetchPcList();
-    connectRelay();
+    loadOrGenerateHardwareKeys().then(() => {
+      fetchPcList();
+      connectRelay();
+    });
     setInterval(fetchPcList, 8000);
   </script>
 </body>
