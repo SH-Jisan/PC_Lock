@@ -10,7 +10,7 @@ namespace DeployManager
     {
         private ProgressBar _progressBar = null!;
         private TextBox _txtLogs = null!;
-        private Button _btnDeploy = null!;
+        private Button _btnDeployEnterprise = null!;
         private Button _btnUninstall = null!;
         private Label _lblStatus = null!;
 
@@ -21,8 +21,8 @@ namespace DeployManager
 
         private void InitializeComponent()
         {
-            this.Text = "PC Security & Pre-Boot Deployment Controller";
-            this.Size = new Size(720, 560);
+            this.Text = "PC Security & Remote Lock Controller - Deployment Hub";
+            this.Size = new Size(740, 580);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -34,7 +34,7 @@ namespace DeployManager
             var pnlHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 80,
+                Height = 85,
                 BackColor = Color.FromArgb(30, 41, 59), // Slate 800
                 Padding = new Padding(20, 15, 20, 15)
             };
@@ -50,11 +50,11 @@ namespace DeployManager
 
             var lblSubtitle = new Label
             {
-                Text = "Tri-Vector Mode 1: Firmware Pre-Boot Cloaking + Background Kernel Agent",
+                Text = "Enterprise Zero-Risk Architecture: 0% Motherboard Freeze Risk + Full Remote Lock",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(148, 163, 184), // Slate 400
                 AutoSize = true,
-                Location = new Point(16, 40)
+                Location = new Point(16, 42)
             };
 
             pnlHeader.Controls.Add(lblTitle);
@@ -64,29 +64,29 @@ namespace DeployManager
             // 2. Buttons & Actions Panel
             var pnlActions = new Panel
             {
-                Location = new Point(20, 95),
-                Size = new Size(665, 85)
+                Location = new Point(20, 100),
+                Size = new Size(685, 90)
             };
 
-            _btnDeploy = new Button
+            _btnDeployEnterprise = new Button
             {
-                Text = "🚀 Deploy / Install Security (Mode 1)",
+                Text = "🚀 Deploy Enterprise Security (Zero Boot Risk)",
                 Location = new Point(0, 5),
-                Size = new Size(320, 45),
+                Size = new Size(335, 48),
                 BackColor = Color.FromArgb(14, 165, 233), // Sky 500
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
                 Cursor = Cursors.Hand
             };
-            _btnDeploy.FlatAppearance.BorderSize = 0;
-            _btnDeploy.Click += async (s, e) => await HandleDeployAsync();
+            _btnDeployEnterprise.FlatAppearance.BorderSize = 0;
+            _btnDeployEnterprise.Click += async (s, e) => await HandleDeployEnterpriseAsync();
 
             _btnUninstall = new Button
             {
                 Text = "🗑️ Completely Uninstall & Restore",
-                Location = new Point(345, 5),
-                Size = new Size(320, 45),
+                Location = new Point(350, 5),
+                Size = new Size(335, 48),
                 BackColor = Color.FromArgb(225, 29, 72), // Rose 600
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -99,12 +99,12 @@ namespace DeployManager
             _lblStatus = new Label
             {
                 Text = "Ready to deploy or manage workstation security.",
-                Location = new Point(2, 58),
+                Location = new Point(2, 60),
                 AutoSize = true,
                 ForeColor = Color.FromArgb(203, 213, 225)
             };
 
-            pnlActions.Controls.Add(_btnDeploy);
+            pnlActions.Controls.Add(_btnDeployEnterprise);
             pnlActions.Controls.Add(_btnUninstall);
             pnlActions.Controls.Add(_lblStatus);
             this.Controls.Add(pnlActions);
@@ -112,8 +112,8 @@ namespace DeployManager
             // 3. Progress Bar
             _progressBar = new ProgressBar
             {
-                Location = new Point(20, 190),
-                Size = new Size(665, 12),
+                Location = new Point(20, 200),
+                Size = new Size(685, 12),
                 Style = ProgressBarStyle.Continuous,
                 Value = 0
             };
@@ -123,7 +123,7 @@ namespace DeployManager
             var lblLogsTitle = new Label
             {
                 Text = "📋 Live Deployment & Diagnostics Stream:",
-                Location = new Point(20, 212),
+                Location = new Point(20, 222),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(148, 163, 184)
@@ -132,8 +132,8 @@ namespace DeployManager
 
             _txtLogs = new TextBox
             {
-                Location = new Point(20, 235),
-                Size = new Size(665, 230),
+                Location = new Point(20, 245),
+                Size = new Size(685, 235),
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
@@ -148,7 +148,7 @@ namespace DeployManager
             var btnCopy = new Button
             {
                 Text = "📋 Copy Logs",
-                Location = new Point(20, 475),
+                Location = new Point(20, 490),
                 Size = new Size(110, 30),
                 BackColor = Color.FromArgb(51, 65, 85),
                 ForeColor = Color.White,
@@ -169,8 +169,8 @@ namespace DeployManager
 
             var lblFooter = new Label
             {
-                Text = "Cyber Workstation Guard • Mode 1 Zero Hardware Risk Architecture",
-                Location = new Point(240, 482),
+                Text = "Cyber Workstation Guard • Enterprise Zero-Risk Remote Security Engine",
+                Location = new Point(220, 497),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 8f),
                 ForeColor = Color.FromArgb(100, 116, 139)
@@ -194,29 +194,29 @@ namespace DeployManager
             _txtLogs.ScrollToCaret();
         }
 
-        private async Task HandleDeployAsync()
+        private async Task HandleDeployEnterpriseAsync()
         {
-            _btnDeploy.Enabled = false;
+            _btnDeployEnterprise.Enabled = false;
             _btnUninstall.Enabled = false;
-            _lblStatus.Text = "⏳ Deploying Tri-Vector Security System...";
+            _lblStatus.Text = "⏳ Deploying Enterprise Zero-Risk Security...";
             _lblStatus.ForeColor = Color.FromArgb(56, 189, 248);
 
             var progress = new Progress<int>(v => _progressBar.Value = v);
 
-            bool success = await Task.Run(() => DeploymentEngine.DeployAsync(AppendLog, progress));
+            bool success = await Task.Run(() => DeploymentEngine.DeployEnterpriseZeroRiskAsync(AppendLog, progress));
 
-            _btnDeploy.Enabled = true;
+            _btnDeployEnterprise.Enabled = true;
             _btnUninstall.Enabled = true;
 
             if (success)
             {
-                _lblStatus.Text = "🟢 Deployment Succeeded! Workstation is Protected.";
+                _lblStatus.Text = "🟢 Enterprise Security Active! (0% Boot Risk)";
                 _lblStatus.ForeColor = Color.FromArgb(52, 211, 153);
                 MessageBox.Show(
-                    "PC Security System successfully deployed and active in the background!\n\n" +
-                    "• Pre-Boot UEFI Firmware Cloak is Active\n" +
-                    "• Background Security Agent is Live & Online\n" +
-                    "• Wi-Fi Network Credentials Synced",
+                    "Enterprise Zero-Risk Security System is successfully deployed and active!\n\n" +
+                    "• 0% BIOS/Boot Freeze Risk (Standard Factory Microsoft Bootloader)\n" +
+                    "• Background PC Security Agent is Live & Online (🟢)\n" +
+                    "• Windows Kernel Remote Lock/Unlock is Fully Protected",
                     "Deployment Succeeded",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information
@@ -233,7 +233,7 @@ namespace DeployManager
         {
             var confirm = MessageBox.Show(
                 "Are you sure you want to completely uninstall the PC Security System?\n\n" +
-                "• Original Windows Bootloader will be restored\n" +
+                "• Original Windows Bootloader will be verified & restored\n" +
                 "• Device records will be purged from Supabase Cloud\n" +
                 "• Background security agent will be removed",
                 "Confirm Uninstallation",
@@ -243,7 +243,7 @@ namespace DeployManager
 
             if (confirm != DialogResult.Yes) return;
 
-            _btnDeploy.Enabled = false;
+            _btnDeployEnterprise.Enabled = false;
             _btnUninstall.Enabled = false;
             _lblStatus.Text = "⏳ Uninstalling and restoring system...";
             _lblStatus.ForeColor = Color.FromArgb(244, 63, 94);
@@ -252,7 +252,7 @@ namespace DeployManager
 
             bool success = await Task.Run(() => DeploymentEngine.UninstallAsync(AppendLog, progress));
 
-            _btnDeploy.Enabled = true;
+            _btnDeployEnterprise.Enabled = true;
             _btnUninstall.Enabled = true;
 
             if (success)

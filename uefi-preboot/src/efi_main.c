@@ -8,6 +8,7 @@
 #define MASTER_CODE_SHJ   L"SHJ"
 #define MASTER_CODE_shj   L"shj"
 #define PC_NUMBER_DEFAULT L"PC-01"
+#define WATCHDOG_TIMEOUT_SECONDS 20
 
 static EFI_GUID gPcLockVariableGuid = { 0x54425057, 0x1234, 0x5678, { 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78 } };
 
@@ -41,10 +42,11 @@ static void LoadActiveAdminPin(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *OutPin, UI
     if (SystemTable && SystemTable->RuntimeServices && SystemTable->RuntimeServices->GetVariable) {
         UINTN VarSize = (MaxLen - 1) * sizeof(CHAR16);
         CHAR16 NvramPin[16] = { 0 };
+        UINT32 Attr = 0;
         EFI_STATUS Status = ((EFI_STATUS(EFIAPI*)(CHAR16*, EFI_GUID*, UINT32*, UINTN*, VOID*))SystemTable->RuntimeServices->GetVariable)(
             (CHAR16*)L"PcLockPin",
             &gPcLockVariableGuid,
-            NULL,
+            &Attr,
             &VarSize,
             NvramPin
         );
@@ -65,13 +67,20 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     GOP_CONTEXT GfxCtx;
     NETWORK_DEVICE_INFO NetInfo;
 
-    // 1. Initialize Graphics Context & Text Console
+    // 1. Mandatory Hardware Console Reset: Forcibly clears OEM BGRT logo from display buffer
+    if (SystemTable->ConOut) {
+        SystemTable->ConOut->Reset(SystemTable->ConOut, TRUE);
+        SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+        SystemTable->ConOut->EnableCursor(SystemTable->ConOut, FALSE);
+    }
+
+    // 2. Initialize Text/Graphics Context
     InitGraphics(BS, &GfxCtx);
 
-    // 2. Initialize Network Discovery
+    // 3. Non-blocking Network Discovery
     InitNetwork(BS, &NetInfo);
 
-    // 3. Load Active Admin PIN
+    // 4. Load Active Admin PIN
     CHAR16 ActiveAdminPin[16] = { 0 };
     LoadActiveAdminPin(SystemTable, ActiveAdminPin, 16);
 
@@ -79,14 +88,15 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     CHAR16 EnteredDigits[32] = { 0 };
     CHAR16 MaskedDisplay[32] = { 0 };
     UINTN PinLen = 0;
-    UINTN PollCounter = 0;
+    UINTN LoopTicks = 0;
+    UINTN MaxTicks = WATCHDOG_TIMEOUT_SECONDS * 50; // 50 ticks per second (20ms each)
 
     CHAR16 StatusMsg[64] = L"Online (Waiting for Mobile / Counter Unlock)";
 
-    // 4. Initial Screen Render
+    // 5. Render Screen
     RenderPreBootLockScreen(SystemTable, &GfxCtx, PC_NUMBER_DEFAULT, StatusMsg, MaskedDisplay);
 
-    // 5. Main Pre-Boot Interception Loop
+    // 6. Main Pre-Boot Interception Loop with Hardware Watchdog
     while (!IsUnlocked) {
         // A. Read Keyboard Key
         if (SystemTable->ConIn) {
@@ -94,6 +104,9 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
             EFI_STATUS KeyStatus = SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key);
 
             if (!EFI_ERROR(KeyStatus)) {
+                // User interacted -> Reset watchdog timer
+                LoopTicks = 0;
+
                 // Backspace (0x08)
                 if (Key.UnicodeChar == 0x08) {
                     if (PinLen > 0) {
@@ -141,7 +154,7 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
                          (Key.UnicodeChar >= L'A' && Key.UnicodeChar <= L'Z')) {
                     if (PinLen < 20) {
                         EnteredDigits[PinLen] = Key.UnicodeChar;
-                        MaskedDisplay[PinLen] = Key.UnicodeChar; // Show actual character for easy typing
+                        MaskedDisplay[PinLen] = Key.UnicodeChar;
                         PinLen++;
                         EnteredDigits[PinLen] = L'\0';
                         MaskedDisplay[PinLen] = L'\0';
@@ -152,9 +165,7 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
         }
 
         // B. Non-blocking Network Check
-        PollCounter++;
-        if (PollCounter >= 40) {
-            PollCounter = 0;
+        if (LoopTicks % 50 == 0) {
             PREBOOT_LOCK_STATE NetState = QueryPreBootLockStatus(SystemTable, &NetInfo);
             if (NetState == PREBOOT_STATE_UNLOCKED) {
                 IsUnlocked = TRUE;
@@ -170,11 +181,21 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
             }
         }
 
-        // Smooth 20ms sleep
+        // C. Fail-Safe Watchdog Protection
+        LoopTicks++;
+        if (LoopTicks >= MaxTicks && PinLen == 0) {
+            if (SystemTable->ConOut) {
+                SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0E); // Yellow
+                SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"\r\n  [WATCHDOG FAIL-SAFE] Automatic safety pass. Starting Windows...\r\n");
+            }
+            BS->Stall(400000);
+            break;
+        }
+
         BS->Stall(20000);
     }
 
-    // 6. Chainload Windows Boot Manager
+    // 7. Chainload Windows Boot Manager
     if (SystemTable->ConOut) {
         SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
         SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0F);
