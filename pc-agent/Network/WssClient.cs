@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Net.NetworkInformation;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32;
 using PC.SecurityAgent.Controllers;
+using PC.SecurityAgent.Hardware;
 using PC.SecurityAgent.Security;
 
 namespace PC.SecurityAgent.Network
@@ -14,6 +17,7 @@ namespace PC.SecurityAgent.Network
         private readonly string _serverUrl;
         private readonly string _pcDeviceId;
         private ClientWebSocket? _ws;
+        private CancellationTokenSource? _reconnectTrigger;
 
         public WssClient(string serverUrl, string pcDeviceId)
         {
@@ -33,39 +37,132 @@ namespace PC.SecurityAgent.Network
 
             _serverUrl = normalized;
             _pcDeviceId = pcDeviceId;
+
+            // 1. Hook Hardware Network State Changes (Instant Reconnect on DHCP/Wi-Fi ready)
+            NetworkChange.NetworkAvailabilityChanged += (s, e) =>
+            {
+                if (e.IsAvailable)
+                {
+                    Console.WriteLine("[Network Sensor] Network adapter is now ONLINE. Triggering immediate gateway connection...");
+                    _reconnectTrigger?.Cancel();
+                }
+                else
+                {
+                    Console.WriteLine("[Network Sensor] Network adapter temporarily disconnected.");
+                }
+            };
+
+            NetworkChange.NetworkAddressChanged += (s, e) =>
+            {
+                if (NetworkInterface.GetIsNetworkAvailable())
+                {
+                    Console.WriteLine("[Network Sensor] IP Address assigned/renewed. Verifying connection...");
+                    _reconnectTrigger?.Cancel();
+                }
+            };
+
+            // 2. Hook System Power Modes (Sleep / Hibernate Resume)
+            SystemEvents.PowerModeChanged += (s, e) =>
+            {
+                if (e.Mode == PowerModes.Resume)
+                {
+                    Console.WriteLine("[Power Sensor] System resumed from sleep/standby. Re-establishing secure relay tunnel...");
+                    _reconnectTrigger?.Cancel();
+                }
+            };
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
+            int retryDelay = 2000;
+
             while (!cancellationToken.IsCancellationRequested)
             {
+                _reconnectTrigger = new CancellationTokenSource();
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _reconnectTrigger.Token);
+
                 try
                 {
+                    // If network is not available yet on boot, wait briefly
+                    if (!NetworkInterface.GetIsNetworkAvailable())
+                    {
+                        Console.WriteLine("[WSS Client] Waiting for network interface initialization...");
+                        await Task.Delay(3000, linkedCts.Token);
+                    }
+
                     _ws = new ClientWebSocket();
+                    _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+
                     Uri connectUri = new Uri($"{_serverUrl}?device_id={_pcDeviceId}&device_type=PC");
-                    
                     Console.WriteLine($"[WSS Client] Connecting to Relay Gateway at {connectUri}...");
-                    await _ws.ConnectAsync(connectUri, cancellationToken);
+
+                    await _ws.ConnectAsync(connectUri, linkedCts.Token);
                     Console.WriteLine("[WSS Client] Connected to Relay Gateway! Live Telemetry Active.");
 
-                    // Report initial lock status
-                    string currentLock = LockController.CurrentState.ToString();
-                    _ = SendStatusUpdateAsync(currentLock);
+                    // Reset retry backoff on successful connection
+                    retryDelay = 2000;
 
-                    // Start background heartbeat loop
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    var heartbeatTask = HeartbeatLoopAsync(cts.Token);
+                    // Send Initial Registration & Status Telemetry Frame
+                    await SendInitialRegistrationAsync();
 
-                    await ReceiveLoopAsync(cancellationToken);
+                    using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCts.Token);
+                    var heartbeatTask = HeartbeatLoopAsync(heartbeatCts.Token);
 
-                    cts.Cancel();
+                    await ReceiveLoopAsync(linkedCts.Token);
+
+                    heartbeatCts.Cancel();
                     await Task.WhenAny(heartbeatTask, Task.Delay(100));
+                }
+                catch (OperationCanceledException) when (_reconnectTrigger.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    Console.WriteLine("[WSS Client] Immediate reconnect signal triggered.");
+                    retryDelay = 1000;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[WSS Client] Connection attempt to {_serverUrl} failed: {ex.Message}. Retrying in 5 seconds...");
-                    await Task.Delay(5000, cancellationToken);
+                    Console.WriteLine($"[WSS Client Warning] Relay connection interrupted ({ex.Message}). Retrying in {retryDelay / 1000}s...");
+                    try
+                    {
+                        await Task.Delay(retryDelay, linkedCts.Token);
+                    }
+                    catch { }
+
+                    // Exponential backoff capped at 8 seconds
+                    retryDelay = Math.Min(retryDelay * 2, 8000);
                 }
+                finally
+                {
+                    try
+                    {
+                        _ws?.Dispose();
+                        _ws = null;
+                    }
+                    catch { }
+                }
+            }
+        }
+
+        private async Task SendInitialRegistrationAsync()
+        {
+            if (_ws != null && _ws.State == WebSocketState.Open)
+            {
+                try
+                {
+                    string pubKey = TpmKeyManager.GetOrCreateDevicePublicKey();
+                    var regMsg = new
+                    {
+                        event_type = "PC_STATUS_REPORT",
+                        pc_id = _pcDeviceId,
+                        device_name = $"{Environment.MachineName} (PC-01)",
+                        lock_status = LockController.CurrentState.ToString(),
+                        public_key = pubKey,
+                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    };
+                    string json = JsonSerializer.Serialize(regMsg);
+                    byte[] bytes = Encoding.UTF8.GetBytes(json);
+                    await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+                catch { }
             }
         }
 
@@ -75,11 +172,12 @@ namespace PC.SecurityAgent.Network
             {
                 try
                 {
-                    await Task.Delay(20000, ct); // Every 20 seconds
+                    await Task.Delay(12000, ct); // Every 12 seconds
                     var heartbeatMsg = new
                     {
                         event_type = "HEARTBEAT",
                         pc_id = _pcDeviceId,
+                        lock_status = LockController.CurrentState.ToString(),
                         timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                     };
                     string json = JsonSerializer.Serialize(heartbeatMsg);
@@ -103,7 +201,6 @@ namespace PC.SecurityAgent.Network
                 }
 
                 string jsonStr = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                Console.WriteLine($"[WSS Client] Received Payload: {jsonStr}");
 
                 try
                 {
@@ -122,7 +219,7 @@ namespace PC.SecurityAgent.Network
 
         private void ProcessCommand(CommandPayload payload)
         {
-            Console.WriteLine($"[WSS Client] Processing Action: {payload.Action} (ID: {payload.CommandId})");
+            Console.WriteLine($"[WSS Client] Processing Remote Command: {payload.Action} (Command ID: {payload.CommandId})");
 
             var (isValid, reason) = CommandValidator.ValidatePayload(payload, "");
             if (!isValid)
@@ -135,17 +232,15 @@ namespace PC.SecurityAgent.Network
 
             if (payload.Action == "LOCK_PC")
             {
-                LockController.LockPC();
-                _ = SendStatusUpdateAsync("LOCKED");
+                LockController.LockPC(false);
             }
             else if (payload.Action == "UNLOCK_PC")
             {
-                LockController.UnlockPC();
-                _ = SendStatusUpdateAsync("UNLOCKED");
+                LockController.UnlockPC(false);
             }
         }
 
-        private async Task SendStatusUpdateAsync(string newStatus)
+        public async Task SendStatusUpdateAsync(string newStatus)
         {
             if (_ws != null && _ws.State == WebSocketState.Open)
             {

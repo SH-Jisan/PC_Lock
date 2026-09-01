@@ -28,12 +28,11 @@ namespace PC.SecurityAgent.Controllers
         public static string ActiveDeviceId { get; set; } = string.Empty;
         public static string RelayHttpBaseUrl { get; set; } = "https://pc-lock.onrender.com";
 
-        public static bool LockPC()
+        public static bool LockPC(bool notifyCloud = false)
         {
             if (CurrentState == LockState.LOCKED)
             {
-                // Already locked, enforce LockWorkStation once safely
-                LockWorkStation();
+                // Already locked, ignore redundant command
                 return true;
             }
 
@@ -67,27 +66,37 @@ namespace PC.SecurityAgent.Controllers
                 }
             }
 
-            // Report state to Cloud Relay REST endpoint
-            _ = SyncStatusToCloudAsync("LOCKED");
+            if (notifyCloud)
+            {
+                _ = SyncStatusToCloudAsync("LOCKED");
+            }
 
             return success;
         }
 
-        public static bool UnlockPC()
+        public static bool UnlockPC(bool notifyCloud = false)
         {
+            if (CurrentState == LockState.UNLOCKED)
+            {
+                // Already unlocked, ignore redundant command completely
+                return true;
+            }
+
             Console.WriteLine("[LockController] Remote UNLOCK Command Received. Restoring UNLOCKED state...");
 
             SetRegistryLockState(LockState.UNLOCKED);
             CurrentState = LockState.UNLOCKED;
 
-            // Report state to Cloud Relay REST endpoint
-            _ = SyncStatusToCloudAsync("UNLOCKED");
+            if (notifyCloud)
+            {
+                _ = SyncStatusToCloudAsync("UNLOCKED");
+            }
 
             Console.WriteLine("[LockController] Lock state set to UNLOCKED. Windows Session unlocked.");
             return true;
         }
 
-        private static async Task SyncStatusToCloudAsync(string status)
+        public static async Task SyncStatusToCloudAsync(string status)
         {
             try
             {

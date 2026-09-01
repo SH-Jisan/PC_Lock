@@ -1,8 +1,9 @@
 @echo off
-title PC Remote Security Agent
 cd /d "%~dp0"
-if exist "..\dotnet\dotnet.exe" (
-    "..\dotnet\dotnet.exe" "bin\Release\net8.0-windows\PC.SecurityAgent.dll"
-) else (
-    dotnet "bin\Release\net8.0-windows\PC.SecurityAgent.dll"
-)
+title PC Security Agent
+color 0A
+echo Starting PC Security Agent...
+set DOTNET_EXE=%~dp0..\..\dotnet\dotnet.exe
+if not exist "%DOTNET_EXE%" set DOTNET_EXE=dotnet
+"%DOTNET_EXE%" "%~dp0bin\App\PC.SecurityAgent.dll"
+pause
