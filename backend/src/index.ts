@@ -217,6 +217,31 @@ app.post('/api/devices/pc/status-update', async (req, res) => {
   res.json({ status: 'SUCCESS', lockStatus });
 });
 
+// 8.1 Deregister & Completely Purge PC from Supabase Cloud & Local Relay
+app.post('/api/devices/pc/deregister', async (req, res) => {
+  const { pcId, hardwareUuid } = req.body;
+  const db = await getDb();
+
+  let targetId = pcId;
+  if (!targetId && hardwareUuid) {
+    const pc = await db.get('SELECT * FROM pc_devices WHERE hardware_uuid = ? OR id = ?', [hardwareUuid, hardwareUuid]);
+    targetId = pc?.id;
+  }
+
+  if (!targetId) {
+    return res.status(400).json({ status: 'ERROR', message: 'Missing pcId or hardwareUuid' });
+  }
+
+  await db.deletePcDevice(targetId);
+  relayGateway.notifyPcDeregistered(targetId);
+
+  res.json({
+    status: 'SUCCESS',
+    pcId: targetId,
+    message: PC  + targetId +  completely purged from Supabase cloud database and relay store.
+  });
+});
+
 // 8. Update Admin PIN for a Specific PC (Protected Endpoint)
 app.post('/api/devices/pc/set-pin', async (req, res) => {
   const { pcId, adminPin } = req.body;

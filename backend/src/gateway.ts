@@ -188,6 +188,18 @@ export class RelayGateway {
     return false;
   }
 
+  public notifyPcDeregistered(pcId: string) {
+    for (const client of this.clients.values()) {
+      if (client.type === 'MOBILE') {
+        client.ws.send(JSON.stringify({
+          event: 'PC_DEREGISTERED',
+          pc_id: pcId,
+          timestamp: Math.floor(Date.now() / 1000)
+        }));
+      }
+    }
+  }
+
   public notifyMobileStateChange(pcId: string, newLockStatus: string) {
     for (const client of this.clients.values()) {
       if (client.type === 'MOBILE') {

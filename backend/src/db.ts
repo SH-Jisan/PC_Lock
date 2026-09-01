@@ -226,6 +226,25 @@ class HybridSupabaseDatabase implements Database {
     }
   }
 
+  public async deletePcDevice(pcId: string) {
+    // 1. Remove from local store
+    this.data.pc_devices = this.data.pc_devices.filter((p) => p.id !== pcId);
+    this.data.device_pairings = this.data.device_pairings.filter((p) => p.pc_id !== pcId);
+    this.persist();
+
+    // 2. Purge from Supabase Cloud
+    if (this.supabase) {
+      try {
+        await this.supabase.from('device_pairings').delete().eq('pc_id', pcId);
+        await this.supabase.from('audit_logs').delete().eq('pc_id', pcId);
+        await this.supabase.from('pc_devices').delete().eq('id', pcId);
+        console.log([Supabase Purge ✅] PC  + pcId +  completely purged from Supabase cloud database.);
+      } catch (e: any) {
+        console.warn([Supabase Purge Warning]:, e.message);
+      }
+    }
+  }
+
   // --- Async Cloud Sync Helpers ---
 
   private async syncPcToSupabase(pc: any) {

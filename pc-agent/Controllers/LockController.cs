@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
@@ -22,18 +23,35 @@ namespace PC.SecurityAgent.Controllers
 
         public static bool LockPC()
         {
-            Console.WriteLine("[LockController] Remote LOCK Command Received. Executing Win32 LockWorkStation()...");
+            Console.WriteLine("[LockController] Remote LOCK Command Received. Executing Windows Lock...");
             
-            // Set registry persistence state so Winlogon credential provider knows PC is locked remotely
+            // Set registry persistence state so Winlogon credential provider & pre-boot knows PC is locked
             SetRegistryLockState(LockState.LOCKED);
             CurrentState = LockState.LOCKED;
 
-            // Trigger Win32 Lock Screen
+            // Run BootGuard Healer to enforce pre-boot firmware lock on reboot
+            Task.Run(() => BootGuardHealer.HealBootConfiguration());
+
+            // 1. Direct Win32 Lock Screen API
             bool success = LockWorkStation();
             if (!success)
             {
                 int error = Marshal.GetLastWin32Error();
-                Console.WriteLine($"[LockController Error] LockWorkStation failed with Win32 Error Code: {error}");
+                Console.WriteLine($"[LockController Warning] LockWorkStation returned: {error}. Attempting fallback execution...");
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "rundll32.exe",
+                        Arguments = "user32.dll,LockWorkStation",
+                        UseShellExecute = true
+                    });
+                    success = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[LockController Error] Fallback lock execution error: {ex.Message}");
+                }
             }
             else
             {

@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -12,6 +14,7 @@ namespace PC.SecurityAgent.Services
     public class SecurityService : BackgroundService
     {
         private readonly ILogger<SecurityService> _logger;
+        private static readonly HttpClient HttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
         public SecurityService(ILogger<SecurityService> logger)
         {
@@ -70,10 +73,52 @@ namespace PC.SecurityAgent.Services
                 BootGuardHealer.HealBootConfiguration();
             };
 
-            // 5. Connect Outbound WSS Client to Relay Server
+            // 5. Start Background REST State Sync Poll Loop (Every 3 seconds for instant lock fail-safe)
             string relayUrl = Environment.GetEnvironmentVariable("PC_SECURITY_RELAY_URL") ?? "wss://pc-lock.onrender.com";
-            WssClient client = new WssClient(relayUrl, pcDeviceId);
+            string httpApiBase = relayUrl.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/');
 
+            _ = Task.Run(async () =>
+            {
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(3000, stoppingToken);
+                        string statusUrl = $"{httpApiBase}/api/devices/status";
+                        string json = await HttpClient.GetStringAsync(statusUrl, stoppingToken);
+                        
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("pcs", out var pcsEl) && pcsEl.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var pc in pcsEl.EnumerateArray())
+                            {
+                                if (pc.TryGetProperty("id", out var idProp) && idProp.GetString() == pcDeviceId)
+                                {
+                                    if (pc.TryGetProperty("lock_status", out var lockProp))
+                                    {
+                                        string remoteStatus = lockProp.GetString() ?? "UNLOCKED";
+                                        if (remoteStatus == "LOCKED" && LockController.CurrentState != LockController.LockState.LOCKED)
+                                        {
+                                            _logger.LogWarning("[Cloud Sync] Remote Lock Policy 'LOCKED' detected. Executing PC Lock...");
+                                            LockController.LockPC();
+                                        }
+                                        else if (remoteStatus == "UNLOCKED" && LockController.CurrentState == LockController.LockState.LOCKED)
+                                        {
+                                            _logger.LogInformation("[Cloud Sync] Remote Lock Policy 'UNLOCKED' detected. Clearing PC Lock...");
+                                            LockController.UnlockPC();
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }, stoppingToken);
+
+            // 6. Connect Outbound Real-Time WSS Client to Relay Server
+            WssClient client = new WssClient(relayUrl, pcDeviceId);
             await client.StartAsync(stoppingToken);
         }
     }
