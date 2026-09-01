@@ -76,6 +76,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
     const stats = relayGateway.getConnectedStats();
     const uptimeSeconds = Math.floor(process.uptime());
     const mem = process.memoryUsage();
+    const supabaseInfo = db.getSupabaseStatus();
 
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
@@ -99,6 +100,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
       database: {
         status: 'CONNECTED',
         registered_workstations: pcCount?.cnt || 0,
+        supabase_cloud: supabaseInfo,
       },
       system: {
         platform: process.platform,

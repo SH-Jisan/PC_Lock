@@ -1,27 +1,29 @@
 ﻿import fs from 'fs';
 import path from 'path';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 export interface Database {
   get(sql: string, params?: any[]): Promise<any>;
   all(sql: string, params?: any[]): Promise<any[]>;
   run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
   exec(sql: string): Promise<void>;
+  getSupabaseStatus(): { configured: boolean; status: string; url?: string };
 }
 
-interface DbStore {
+interface DbSchema {
   users: Array<{ id: string; email: string; password_hash: string; created_at: string }>;
   pc_devices: Array<{
     id: string;
     user_id: string;
     device_name: string;
-    pc_number: string;
+    pc_number?: string;
     mac_address?: string;
-    admin_pin: string;
+    admin_pin?: string;
     pc_public_key: string;
     hardware_uuid: string;
     is_online: number;
     lock_status: string;
-    last_seen_at?: string;
+    last_seen_at: string;
     created_at: string;
   }>;
   mobile_devices: Array<{
@@ -37,8 +39,8 @@ interface DbStore {
     id: string;
     pc_id: string;
     mobile_id: string;
-    paired_at: string;
     is_active: number;
+    paired_at: string;
   }>;
   audit_logs: Array<{
     id: string;
@@ -46,31 +48,118 @@ interface DbStore {
     mobile_id?: string;
     event_type: string;
     status: string;
-    ip_address?: string;
     details?: string;
     created_at: string;
   }>;
 }
 
-class JsonDatabase implements Database {
+class HybridSupabaseDatabase implements Database {
   private dbPath: string;
-  private data: DbStore;
+  private data: DbSchema;
   private saveTimeout: NodeJS.Timeout | null = null;
+  private supabase: SupabaseClient | null = null;
+  private supabaseConfigured: boolean = false;
+  private supabaseUrl?: string;
 
   constructor() {
-    this.dbPath = path.join(__dirname, '../security_relay.json');
+    this.dbPath = path.resolve(__dirname, '../security_relay.json');
     this.data = this.loadData();
+    this.initSupabaseClient();
     this.initDefaultSeed();
   }
 
-  private loadData(): DbStore {
+  private initSupabaseClient() {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+    if (url && key) {
+      try {
+        this.supabase = createClient(url, key, {
+          auth: { persistSession: false },
+        });
+        this.supabaseConfigured = true;
+        this.supabaseUrl = url;
+        console.log(`[Supabase Hybrid] Connected to Supabase Project: ${url}`);
+        this.hydrateFromSupabase();
+      } catch (err: any) {
+        console.error('[Supabase Init Warning]:', err.message);
+      }
+    } else {
+      console.log('[Supabase Hybrid] Running in Local Persistent Mode (SUPABASE_URL not set).');
+    }
+  }
+
+  public getSupabaseStatus(): { configured: boolean; status: string; url?: string } {
+    return {
+      configured: this.supabaseConfigured,
+      status: this.supabaseConfigured ? 'CONNECTED' : 'LOCAL_ONLY',
+      url: this.supabaseUrl ? this.supabaseUrl.replace(/https?:\/\//, '').split('.')[0] + '.supabase.co' : undefined,
+    };
+  }
+
+  private async hydrateFromSupabase() {
+    if (!this.supabase) return;
+    try {
+      // 1. Hydrate PC devices
+      const { data: pcs, error: pcErr } = await this.supabase.from('pc_devices').select('*');
+      if (!pcErr && pcs && pcs.length > 0) {
+        for (const remotePc of pcs) {
+          const localIdx = this.data.pc_devices.findIndex(p => p.id === remotePc.id);
+          const mapped = {
+            id: remotePc.id,
+            user_id: remotePc.user_id,
+            device_name: remotePc.device_name,
+            pc_number: remotePc.pc_number,
+            mac_address: remotePc.mac_address,
+            admin_pin: remotePc.admin_pin || '998877',
+            pc_public_key: remotePc.pc_public_key,
+            hardware_uuid: remotePc.hardware_uuid,
+            is_online: remotePc.is_online ? 1 : 0,
+            lock_status: remotePc.lock_status || 'UNLOCKED',
+            last_seen_at: remotePc.last_seen_at || new Date().toISOString(),
+            created_at: remotePc.created_at || new Date().toISOString(),
+          };
+          if (localIdx >= 0) {
+            this.data.pc_devices[localIdx] = mapped;
+          } else {
+            this.data.pc_devices.push(mapped);
+          }
+        }
+        this.persist();
+        console.log(`[Supabase Hydration] Synced ${pcs.length} PC(s) from Supabase Cloud.`);
+      }
+
+      // 2. Hydrate Mobile devices
+      const { data: mobiles } = await this.supabase.from('mobile_devices').select('*');
+      if (mobiles && mobiles.length > 0) {
+        for (const remoteMob of mobiles) {
+          if (!this.data.mobile_devices.some(m => m.id === remoteMob.id)) {
+            this.data.mobile_devices.push({
+              id: remoteMob.id,
+              user_id: remoteMob.user_id,
+              device_name: remoteMob.device_name,
+              mobile_public_key: remoteMob.mobile_public_key,
+              device_token: remoteMob.device_token,
+              is_revoked: remoteMob.is_revoked ? 1 : 0,
+              created_at: remoteMob.created_at || new Date().toISOString(),
+            });
+          }
+        }
+        this.persist();
+      }
+    } catch (e: any) {
+      console.warn('[Supabase Hydration Warning]:', e.message);
+    }
+  }
+
+  private loadData(): DbSchema {
     try {
       if (fs.existsSync(this.dbPath)) {
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
         return JSON.parse(raw);
       }
     } catch (e) {
-      console.warn('[DB] Initializing new database store...');
+      console.warn('[DB] Initializing new local database store...');
     }
 
     return {
@@ -94,7 +183,6 @@ class JsonDatabase implements Database {
   }
 
   private initDefaultSeed() {
-    // Zero predefined PCs: Only real connected PCs will appear
     if (this.data.mobile_devices.length === 0) {
       this.data.mobile_devices = [
         {
@@ -109,6 +197,81 @@ class JsonDatabase implements Database {
       this.persist();
     }
   }
+
+  // --- Async Cloud Sync Helpers ---
+
+  private async syncPcToSupabase(pc: any) {
+    if (!this.supabase) return;
+    try {
+      await this.supabase.from('pc_devices').upsert({
+        id: pc.id,
+        user_id: pc.user_id || 'user_demo_1',
+        device_name: pc.device_name,
+        pc_number: pc.pc_number,
+        mac_address: pc.mac_address,
+        admin_pin: pc.admin_pin || '998877',
+        pc_public_key: pc.pc_public_key,
+        hardware_uuid: pc.hardware_uuid,
+        is_online: pc.is_online === 1,
+        lock_status: pc.lock_status,
+        last_seen_at: pc.last_seen_at,
+        created_at: pc.created_at,
+      });
+    } catch (e: any) {
+      console.warn(`[Supabase Sync Warning] Failed to sync PC ${pc.id}:`, e.message);
+    }
+  }
+
+  private async syncMobileToSupabase(mobile: any) {
+    if (!this.supabase) return;
+    try {
+      await this.supabase.from('mobile_devices').upsert({
+        id: mobile.id,
+        user_id: mobile.user_id || 'user_demo_1',
+        device_name: mobile.device_name,
+        mobile_public_key: mobile.mobile_public_key,
+        device_token: mobile.device_token || null,
+        is_revoked: mobile.is_revoked === 1,
+        created_at: mobile.created_at,
+      });
+    } catch (e: any) {
+      console.warn(`[Supabase Sync Warning] Failed to sync Mobile ${mobile.id}:`, e.message);
+    }
+  }
+
+  private async syncPairingToSupabase(pairing: any) {
+    if (!this.supabase) return;
+    try {
+      await this.supabase.from('device_pairings').upsert({
+        id: pairing.id,
+        pc_id: pairing.pc_id,
+        mobile_id: pairing.mobile_id,
+        is_active: pairing.is_active === 1,
+        paired_at: pairing.paired_at,
+      });
+    } catch (e: any) {
+      console.warn(`[Supabase Sync Warning] Failed to sync Pairing ${pairing.id}:`, e.message);
+    }
+  }
+
+  private async syncAuditLogToSupabase(log: any) {
+    if (!this.supabase) return;
+    try {
+      await this.supabase.from('audit_logs').insert({
+        id: log.id,
+        pc_id: log.pc_id || null,
+        mobile_id: log.mobile_id || null,
+        event_type: log.event_type,
+        status: log.status,
+        details: log.details || null,
+        created_at: log.created_at,
+      });
+    } catch (e: any) {
+      console.warn(`[Supabase Sync Warning] Failed to sync Audit Log:`, e.message);
+    }
+  }
+
+  // --- Database Interface Implementations ---
 
   async get(sql: string, params: any[] = []): Promise<any> {
     const s = sql.toLowerCase();
@@ -190,13 +353,16 @@ class JsonDatabase implements Database {
     if (s.includes('insert into pc_devices')) {
       const [id, user_id, device_name, pc_number, pc_public_key, hardware_uuid, is_online, lock_status] = params;
       const existing = this.data.pc_devices.find(p => p.id === id || p.hardware_uuid === hardware_uuid);
+      let targetPc: any;
+
       if (existing) {
         existing.is_online = is_online !== undefined ? is_online : 1;
         existing.last_seen_at = new Date().toISOString();
         if (device_name) existing.device_name = device_name;
+        targetPc = existing;
       } else {
         const num = pc_number || `PC-0${this.data.pc_devices.length + 1}`;
-        this.data.pc_devices.push({
+        targetPc = {
           id,
           user_id: user_id || 'user_demo_1',
           device_name: device_name || `Cyber Workstation (${num})`,
@@ -208,9 +374,11 @@ class JsonDatabase implements Database {
           lock_status: lock_status || 'UNLOCKED',
           last_seen_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
-        });
+        };
+        this.data.pc_devices.push(targetPc);
       }
       this.persist();
+      this.syncPcToSupabase(targetPc);
       return { changes: 1 };
     }
 
@@ -222,6 +390,7 @@ class JsonDatabase implements Database {
         pc.is_online = is_online;
         pc.last_seen_at = new Date().toISOString();
         this.persist();
+        this.syncPcToSupabase(pc);
       }
       return { changes: 1 };
     }
@@ -234,6 +403,7 @@ class JsonDatabase implements Database {
         pc.lock_status = lock_status;
         pc.last_seen_at = new Date().toISOString();
         this.persist();
+        this.syncPcToSupabase(pc);
       }
       return { changes: 1 };
     }
@@ -245,6 +415,7 @@ class JsonDatabase implements Database {
       if (pc) {
         pc.admin_pin = admin_pin;
         this.persist();
+        this.syncPcToSupabase(pc);
       }
       return { changes: 1 };
     }
@@ -258,40 +429,45 @@ class JsonDatabase implements Database {
         pc.is_online = 1;
         pc.last_seen_at = new Date().toISOString();
         this.persist();
+        this.syncPcToSupabase(pc);
       }
       return { changes: 1 };
     }
 
     if (s.includes('insert into mobile_devices')) {
       const [id, user_id, device_name, mobile_public_key, device_token] = params;
-      this.data.mobile_devices.push({
+      const mob = {
         id,
-        user_id,
+        user_id: user_id || 'user_demo_1',
         device_name,
         mobile_public_key,
         device_token,
         is_revoked: 0,
         created_at: new Date().toISOString(),
-      });
+      };
+      this.data.mobile_devices.push(mob);
       this.persist();
+      this.syncMobileToSupabase(mob);
       return { changes: 1 };
     }
 
     if (s.includes('insert or replace into device_pairings') || s.includes('insert into device_pairings')) {
       const [id, pc_id, mobile_id] = params;
-      const existing = this.data.device_pairings.find((dp) => dp.pc_id === pc_id && dp.mobile_id === mobile_id);
-      if (existing) {
-        existing.is_active = 1;
+      let pairing = this.data.device_pairings.find((dp) => dp.pc_id === pc_id && dp.mobile_id === mobile_id);
+      if (pairing) {
+        pairing.is_active = 1;
       } else {
-        this.data.device_pairings.push({ id, pc_id, mobile_id, is_active: 1, paired_at: new Date().toISOString() });
+        pairing = { id, pc_id, mobile_id, is_active: 1, paired_at: new Date().toISOString() };
+        this.data.device_pairings.push(pairing);
       }
       this.persist();
+      this.syncPairingToSupabase(pairing);
       return { changes: 1 };
     }
 
     if (s.includes('insert into audit_logs')) {
       const [id, pc_id, mobile_id, event_type, status, details] = params;
-      this.data.audit_logs.push({
+      const log = {
         id,
         pc_id,
         mobile_id: details ? mobile_id : undefined,
@@ -299,8 +475,10 @@ class JsonDatabase implements Database {
         status: details ? status : (params[3] || 'SUCCESS'),
         details: details || params[4] || '',
         created_at: new Date().toISOString(),
-      });
+      };
+      this.data.audit_logs.push(log);
       this.persist();
+      this.syncAuditLogToSupabase(log);
       return { changes: 1 };
     }
 
@@ -316,8 +494,7 @@ let dbInstance: Database | null = null;
 
 export async function getDb(): Promise<Database> {
   if (!dbInstance) {
-    dbInstance = new JsonDatabase();
-    console.log('[DB] High-Performance Clean Database Engine Initialized (0 Predefined PCs).');
+    dbInstance = new HybridSupabaseDatabase();
   }
   return dbInstance;
 }

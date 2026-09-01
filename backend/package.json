@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "pc-security-backend",
   "version": "1.0.0",
   "description": "Secure Relay and Authentication Server for PC Remote Security System",
@@ -9,6 +9,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
