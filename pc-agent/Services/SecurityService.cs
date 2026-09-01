@@ -71,7 +71,7 @@ namespace PC.SecurityAgent.Services
             };
 
             // 5. Connect Outbound WSS Client to Relay Server
-            string relayUrl = Environment.GetEnvironmentVariable("PC_SECURITY_RELAY_URL") ?? "ws://localhost:4000";
+            string relayUrl = Environment.GetEnvironmentVariable("PC_SECURITY_RELAY_URL") ?? "wss://pc-lock.onrender.com";
             WssClient client = new WssClient(relayUrl, pcDeviceId);
 
             await client.StartAsync(stoppingToken);

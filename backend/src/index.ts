@@ -210,6 +210,9 @@ app.post('/api/devices/pc/status-update', async (req, res) => {
   const db = await getDb();
   await db.run('UPDATE pc_devices SET lock_status = ?, last_seen_at = CURRENT_TIMESTAMP WHERE id = ?', [lockStatus, pcId]);
   
+  const action = lockStatus === 'LOCKED' ? 'LOCK_PC' : 'UNLOCK_PC';
+  await relayGateway.dispatchDirectCommand(pcId, action);
+
   relayGateway.notifyMobileStateChange(pcId, lockStatus);
   res.json({ status: 'SUCCESS', lockStatus });
 });

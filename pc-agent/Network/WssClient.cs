@@ -17,7 +17,21 @@ namespace PC.SecurityAgent.Network
 
         public WssClient(string serverUrl, string pcDeviceId)
         {
-            _serverUrl = serverUrl;
+            string normalized = serverUrl.Trim().TrimEnd('/');
+            if (normalized.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = "wss://" + normalized.Substring(8);
+            }
+            else if (normalized.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = "ws://" + normalized.Substring(7);
+            }
+            else if (!normalized.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) && !normalized.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = "wss://" + normalized;
+            }
+
+            _serverUrl = normalized;
             _pcDeviceId = pcDeviceId;
         }
 
@@ -49,7 +63,7 @@ namespace PC.SecurityAgent.Network
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[WSS Client] Connection lost ({ex.Message}). Retrying in 5 seconds...");
+                    Console.WriteLine($"[WSS Client] Connection attempt to {_serverUrl} failed: {ex.Message}. Retrying in 5 seconds...");
                     await Task.Delay(5000, cancellationToken);
                 }
             }
@@ -94,7 +108,7 @@ namespace PC.SecurityAgent.Network
                 try
                 {
                     var payload = JsonSerializer.Deserialize<CommandPayload>(jsonStr);
-                    if (payload != null)
+                    if (payload != null && !string.IsNullOrWhiteSpace(payload.Action))
                     {
                         ProcessCommand(payload);
                     }
@@ -116,6 +130,8 @@ namespace PC.SecurityAgent.Network
                 Console.WriteLine($"[SECURITY REJECTION] {reason}");
                 return;
             }
+
+            Console.WriteLine($"[SECURITY ACCEPTED] {reason}. Executing {payload.Action}...");
 
             if (payload.Action == "LOCK_PC")
             {

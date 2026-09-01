@@ -61,13 +61,13 @@ bcdedit /set {fwbootmgr} displayorder {bootmgr} /remove >nul 2>&1
 :: 4. Unmount EFI Partition
 mountvol %MOUNT_LETTER%: /d
 
-:: 5. Install / Start Vector 3 (Background Self-Healing Windows Service)
+:: 5. Install / Start Vector 3 (Background Self-Healing Windows Service / Agent)
 echo [4/4] Activating Vector 3 (Continuous Self-Healing Agent Service)...
-set SERVICE_EXE=%~dp0..\..\pc-agent\bin\Release\net8.0-windows\PC.SecurityAgent.exe
-if exist "%SERVICE_EXE%" (
-    sc create "PCSecurityAgent" binPath= "%SERVICE_EXE%" start= auto DisplayName= "PC Remote Security and BootGuard Healer" >nul 2>&1
-    sc start "PCSecurityAgent" >nul 2>&1
-)
+set AGENT_DIR=%~dp0..\..\pc-agent
+set DOTNET_EXE=%~dp0..\..\..\dotnet\dotnet.exe
+if not exist "%DOTNET_EXE%" set DOTNET_EXE=dotnet
+
+start "" /B "%DOTNET_EXE%" "%AGENT_DIR%\bin\Release\net8.0-windows\PC.SecurityAgent.dll"
 
 echo ========================================================
 echo  [SUCCESS] Mode 1: Tri-Vector Self-Healing Active!
