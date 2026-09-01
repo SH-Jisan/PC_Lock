@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal
 echo =======================================================
 echo  Building Universal Pre-Boot Micro-Core (Wired + Wi-Fi)

@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal EnableDelayedExpansion
 echo ========================================================
 echo  [MODE 1] Deploying Tri-Vector Self-Healing Persistence
@@ -34,14 +34,14 @@ if not exist "%MOUNT_LETTER%:\EFI" (
     exit /b 1
 )
 
-:: 3. Setup Pre-Boot Cloak & Folders
+:: 3. Setup Pre-Boot Cloak and Folders
 echo [2/4] Configuring Vector 1 (Hardware Bootloader Cloaking)...
 if not exist "%MOUNT_LETTER%:\EFI\PCLock" mkdir "%MOUNT_LETTER%:\EFI\PCLock"
 if not exist "%MOUNT_LETTER%:\EFI\Boot" mkdir "%MOUNT_LETTER%:\EFI\Boot"
 
 :: Cloak standard Windows Boot Manager if present
 if exist "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw.efi" (
-    echo [*] Cloaking Microsoft bootmgfw.efi -> bootmgfw_hidden.efi
+    echo [*] Cloaking Microsoft bootmgfw.efi to bootmgfw_hidden.efi...
     if exist "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" del /f /q "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi"
     move "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw.efi" "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" >nul
 )
@@ -63,12 +63,12 @@ mountvol %MOUNT_LETTER%: /d
 echo [4/4] Activating Vector 3 (Continuous Self-Healing Agent Service)...
 set SERVICE_EXE=%~dp0..\..\pc-agent\bin\Release\net8.0-windows\PC.SecurityAgent.exe
 if exist "%SERVICE_EXE%" (
-    sc create "PCSecurityAgent" binPath= "%SERVICE_EXE%" start= auto DisplayName= "PC Remote Security & BootGuard Healer" >nul 2>&1
+    sc create "PCSecurityAgent" binPath= "%SERVICE_EXE%" start= auto DisplayName= "PC Remote Security and BootGuard Healer" >nul 2>&1
     sc start "PCSecurityAgent" >nul 2>&1
 )
 
 echo ========================================================
 echo  [SUCCESS] Mode 1: Tri-Vector Self-Healing Active!
-echo  Security Level: Level 4 (Firmware & Kernel Self-Healing)
+echo  Security Level: Level 4 (Firmware and Kernel Self-Healing)
 echo ========================================================
 pause

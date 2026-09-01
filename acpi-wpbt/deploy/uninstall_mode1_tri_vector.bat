@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal EnableDelayedExpansion
 echo ========================================================
 echo  [RESTORE] Uninstalling Mode 1 Tri-Vector Pre-Boot Cloak
@@ -19,6 +19,10 @@ for %%D in (Z Y X W V U T S R Q P) do (
     )
 )
 :FoundDrive
+if "%MOUNT_LETTER%"=="" (
+    echo [ERROR] No available drive letters found to mount EFI partition.
+    exit /b 1
+)
 
 mountvol %MOUNT_LETTER%: /s
 if exist "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" (
