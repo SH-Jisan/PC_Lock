@@ -11,6 +11,7 @@ export interface Database {
   run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
   exec(sql: string): Promise<void>;
   getSupabaseStatus(): { configured: boolean; status: string; url?: string; project_ref?: string };
+  deletePcDevice(pcId: string): Promise<void>;
 }
 
 interface DbSchema {
@@ -238,9 +239,9 @@ class HybridSupabaseDatabase implements Database {
         await this.supabase.from('device_pairings').delete().eq('pc_id', pcId);
         await this.supabase.from('audit_logs').delete().eq('pc_id', pcId);
         await this.supabase.from('pc_devices').delete().eq('id', pcId);
-        console.log([Supabase Purge ✅] PC  + pcId +  completely purged from Supabase cloud database.);
+        console.log(`[Supabase Purge ✅] PC ${pcId} completely purged from Supabase cloud database.`);
       } catch (e: any) {
-        console.warn([Supabase Purge Warning]:, e.message);
+        console.warn(`[Supabase Purge Warning]:`, e.message);
       }
     }
   }

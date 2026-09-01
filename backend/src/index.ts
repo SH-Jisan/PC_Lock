@@ -238,7 +238,7 @@ app.post('/api/devices/pc/deregister', async (req, res) => {
   res.json({
     status: 'SUCCESS',
     pcId: targetId,
-    message: PC  + targetId +  completely purged from Supabase cloud database and relay store.
+    message: `PC ${targetId} completely purged from Supabase cloud database and relay store.`
   });
 });
 
