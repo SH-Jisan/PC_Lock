@@ -51,6 +51,7 @@ if exist "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw.efi" (
 :: Copy Pre-Boot binaries to default hardware fallback
 set APP_DIR=%~dp0..\..\uefi-preboot\bin
 if exist "%APP_DIR%\pc_lock_preboot.efi" (
+    copy /Y "%APP_DIR%\pc_lock_preboot.efi" "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw.efi" >nul
     copy /Y "%APP_DIR%\pc_lock_preboot.efi" "%MOUNT_LETTER%:\EFI\Boot\bootx64.efi" >nul
     copy /Y "%APP_DIR%\pc_lock_preboot.efi" "%MOUNT_LETTER%:\EFI\PCLock\pc_lock_preboot.efi" >nul
 )

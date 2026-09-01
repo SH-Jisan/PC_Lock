@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32;
 using PC.SecurityAgent.Controllers;
 using PC.SecurityAgent.Hardware;
 using PC.SecurityAgent.Network;
@@ -34,6 +35,8 @@ namespace PC.SecurityAgent.Services
             string envPcId = Environment.GetEnvironmentVariable("PC_SECURITY_DEVICE_ID") ?? string.Empty;
             string pcDeviceId = !string.IsNullOrWhiteSpace(envPcId) ? envPcId : $"pc_{hardwareGuid[..8]}";
 
+            LockController.ActiveDeviceId = pcDeviceId;
+
             _logger.LogInformation($"[Agent Identity] PC Device ID: {pcDeviceId}");
             _logger.LogInformation($"[Agent Identity] TPM Public Key: {pubKey[..24]}...");
 
@@ -52,30 +55,42 @@ namespace PC.SecurityAgent.Services
             else
             {
                 _logger.LogWarning("🔴 PC restored to LOCKED state due to active remote security policy.");
+                LockController.LockPC();
             }
 
-            // 4. Mode 1 Tri-Vector Auto-Healer & Pre-Shutdown Protection
+            // 4. Hook Windows Session Switch Events (Defense against local password bypass while remotely locked)
+            SystemEvents.SessionSwitch += (sender, e) =>
+            {
+                if (e.Reason == SessionSwitchReason.SessionUnlock)
+                {
+                    if (LockController.CurrentState == LockController.LockState.LOCKED)
+                    {
+                        _logger.LogWarning("[Security Enforcement] Unauthorized local Windows user password unlock attempt intercepted. Relocking immediately...");
+                        LockController.LockPC();
+                    }
+                }
+            };
+
+            // 5. Mode 1 Tri-Vector Auto-Healer & Pre-Shutdown Protection
             _logger.LogInformation("🛡️ Initializing BootGuard Self-Healer & Pre-Shutdown Protection...");
             
-            // Run initial heal on startup
             Task.Run(() => BootGuardHealer.HealBootConfiguration());
 
-            // Continuous Background Auto-Healer Timer (Every 5 minutes)
             using var healTimer = new System.Threading.Timer(_ =>
             {
                 BootGuardHealer.HealBootConfiguration();
             }, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
-            // Pre-Shutdown & System Reboot Protection Hook
             AppDomain.CurrentDomain.ProcessExit += (sender, args) =>
             {
                 _logger.LogInformation("[Pre-Shutdown Hook] System shutting down/rebooting. Running final boot cloaking pass...");
                 BootGuardHealer.HealBootConfiguration();
             };
 
-            // 5. Start Background REST State Sync Poll Loop (Every 3 seconds for instant lock fail-safe)
+            // 6. Start Background REST State Sync Poll Loop (Every 3 seconds for instant lock fail-safe)
             string relayUrl = Environment.GetEnvironmentVariable("PC_SECURITY_RELAY_URL") ?? "wss://pc-lock.onrender.com";
             string httpApiBase = relayUrl.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/');
+            LockController.RelayHttpBaseUrl = httpApiBase;
 
             _ = Task.Run(async () =>
             {
@@ -117,7 +132,7 @@ namespace PC.SecurityAgent.Services
                 }
             }, stoppingToken);
 
-            // 6. Connect Outbound Real-Time WSS Client to Relay Server
+            // 7. Connect Outbound Real-Time WSS Client to Relay Server
             WssClient client = new WssClient(relayUrl, pcDeviceId);
             await client.StartAsync(stoppingToken);
         }

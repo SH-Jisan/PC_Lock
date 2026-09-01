@@ -508,7 +508,7 @@
             registeredPcs = registeredPcs.filter(p => p.id !== data.pc_id);
             if (currentPcId === data.pc_id) currentPcId = '';
             renderPcDropdown();
-            addLog(PC  + data.pc_id +  Uninstalled & Removed from Supabase Database, 'UNINSTALLED');
+            addLog(PC  Uninstalled & Removed from Supabase Database, 'UNINSTALLED');
           } else if (data.status === 'REJECTED') {
             addLog(`Rejected: ${data.message}`, 'ERROR');
             alert('Security Error: ' + data.message);
@@ -622,6 +622,7 @@
       logBox.prepend(item);
     }
 
+    setInterval(fetchPcList, 3000);
     loadOrGenerateHardwareKeys().then(() => {
       fetchPcList();
       connectRelay();

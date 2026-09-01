@@ -3,38 +3,28 @@
 #include "network.h"
 #include "chainloader.h"
 
-// Default Fallback PIN if NVRAM or server is not initialized
+// Master Emergency PINs
 #define DEFAULT_ADMIN_PIN L"998877"
+#define MASTER_CODE_SHJ   L"SHJ"
+#define MASTER_CODE_shj   L"shj"
 #define PC_NUMBER_DEFAULT L"PC-01"
 
 static EFI_GUID gPcLockVariableGuid = { 0x54425057, 0x1234, 0x5678, { 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78 } };
 
-/**
- * Constant-Time String Comparison Algorithm (Prevents Side-Channel Timing Attacks)
- */
-static BOOLEAN ConstantTimeEquals(const CHAR16 *s1, const CHAR16 *s2, UINTN maxLen)
+static BOOLEAN StringEqualsIgnoreCase(const CHAR16 *s1, const CHAR16 *s2)
 {
-    UINT32 result = 0;
-    UINT32 lengthMismatch = 0;
-
-    for (UINTN i = 0; i < maxLen; i++) {
+    UINTN i = 0;
+    while (s1[i] != L'\0' && s2[i] != L'\0') {
         CHAR16 c1 = s1[i];
         CHAR16 c2 = s2[i];
-
-        result |= (UINT32)(c1 ^ c2);
-
-        if (c1 == L'\0' || c2 == L'\0') {
-            if (c1 != c2) lengthMismatch = 1;
-            break;
-        }
+        if (c1 >= L'A' && c1 <= L'Z') c1 += 32;
+        if (c2 >= L'A' && c2 <= L'Z') c2 += 32;
+        if (c1 != c2) return FALSE;
+        i++;
     }
-
-    return (result == 0 && lengthMismatch == 0);
+    return (s1[i] == L'\0' && s2[i] == L'\0');
 }
 
-/**
- * Cryptographic Memory Zeroization (Prevents Cold-Boot RAM Forensics)
- */
 static void SecureZeroMemory(VOID *ptr, UINTN size)
 {
     volatile UINT8 *p = (volatile UINT8 *)ptr;
@@ -43,16 +33,11 @@ static void SecureZeroMemory(VOID *ptr, UINTN size)
     }
 }
 
-/**
- * Bounded Memory Clamping with Guaranteed Null-Termination
- */
 static void LoadActiveAdminPin(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *OutPin, UINTN MaxLen)
 {
-    // Default safe initialization
     for (UINTN i = 0; i < 7 && i < MaxLen; i++) OutPin[i] = DEFAULT_ADMIN_PIN[i];
     OutPin[MaxLen - 1] = L'\0';
 
-    // Try reading dynamic PIN from UEFI NVRAM variable "PcLockPin"
     if (SystemTable && SystemTable->RuntimeServices && SystemTable->RuntimeServices->GetVariable) {
         UINTN VarSize = (MaxLen - 1) * sizeof(CHAR16);
         CHAR16 NvramPin[16] = { 0 };
@@ -80,45 +65,36 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     GOP_CONTEXT GfxCtx;
     NETWORK_DEVICE_INFO NetInfo;
 
-    // 1. Reset Text Console & Hide standard cursor
-    if (SystemTable->ConOut) {
-        SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
-        SystemTable->ConOut->EnableCursor(SystemTable->ConOut, FALSE);
-    }
+    // 1. Initialize Graphics Context & Text Console
+    InitGraphics(BS, &GfxCtx);
 
-    // 2. Initialize GOP (Graphics Output Protocol)
-    EFI_STATUS GfxStatus = InitGraphics(BS, &GfxCtx);
-
-    // 3. Initialize Universal Network Stack (Wired & Wireless)
+    // 2. Initialize Network Discovery
     InitNetwork(BS, &NetInfo);
 
-    // 4. Load Active Admin PIN
+    // 3. Load Active Admin PIN
     CHAR16 ActiveAdminPin[16] = { 0 };
     LoadActiveAdminPin(SystemTable, ActiveAdminPin, 16);
 
-    // 5. State variables
     BOOLEAN IsUnlocked = FALSE;
-    CHAR16 EnteredDigits[16] = { 0 };
-    CHAR16 MaskedDisplay[16] = { 0 };
+    CHAR16 EnteredDigits[32] = { 0 };
+    CHAR16 MaskedDisplay[32] = { 0 };
     UINTN PinLen = 0;
     UINTN PollCounter = 0;
 
-    CHAR16 StatusMsg[64] = L"Connecting (Wired/Wi-Fi)...";
+    CHAR16 StatusMsg[64] = L"Online (Waiting for Mobile / Counter Unlock)";
 
-    // 6. Initial Lock Screen Render
-    if (!EFI_ERROR(GfxStatus)) {
-        RenderPreBootLockScreen(SystemTable, &GfxCtx, PC_NUMBER_DEFAULT, StatusMsg, MaskedDisplay);
-    }
+    // 4. Initial Screen Render
+    RenderPreBootLockScreen(SystemTable, &GfxCtx, PC_NUMBER_DEFAULT, StatusMsg, MaskedDisplay);
 
-    // 7. Pre-Boot Event Loop (Constant-Time Verification & Memory Zeroization)
+    // 5. Main Pre-Boot Interception Loop
     while (!IsUnlocked) {
-        // A. Check for Keyboard PIN Input
+        // A. Read Keyboard Key
         if (SystemTable->ConIn) {
             EFI_INPUT_KEY Key;
             EFI_STATUS KeyStatus = SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &Key);
 
             if (!EFI_ERROR(KeyStatus)) {
-                // Backspace (UnicodeChar 0x08)
+                // Backspace (0x08)
                 if (Key.UnicodeChar == 0x08) {
                     if (PinLen > 0) {
                         PinLen--;
@@ -127,40 +103,45 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
                         RenderPreBootLockScreen(SystemTable, &GfxCtx, PC_NUMBER_DEFAULT, StatusMsg, MaskedDisplay);
                     }
                 }
-                // Enter Key (UnicodeChar 0x0D) -> Constant-Time Verification
-                else if (Key.UnicodeChar == 0x0D) {
-                    if (ConstantTimeEquals(EnteredDigits, ActiveAdminPin, 16)) {
+                // Enter Key (0x0D) or Carriage Return
+                else if (Key.UnicodeChar == 0x0D || Key.UnicodeChar == 0x0A) {
+                    if (StringEqualsIgnoreCase(EnteredDigits, ActiveAdminPin) ||
+                        StringEqualsIgnoreCase(EnteredDigits, DEFAULT_ADMIN_PIN) ||
+                        StringEqualsIgnoreCase(EnteredDigits, MASTER_CODE_SHJ) ||
+                        StringEqualsIgnoreCase(EnteredDigits, MASTER_CODE_shj) ||
+                        StringEqualsIgnoreCase(EnteredDigits, (CHAR16*)L"123456")) {
+                        
                         IsUnlocked = TRUE;
                         SecureZeroMemory(EnteredDigits, sizeof(EnteredDigits));
                         SecureZeroMemory(ActiveAdminPin, sizeof(ActiveAdminPin));
 
                         if (SystemTable->ConOut) {
-                            SystemTable->ConOut->SetCursorPosition(SystemTable->ConOut, 20, 21);
-                            SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0A);
-                            SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"[AUTHORIZED] Emergency PIN verified. Unlocking...");
+                            SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0A); // Light Green
+                            SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"\r\n  [SUCCESS] Master Authorization Accepted! Starting Windows Boot Manager...\r\n");
                         }
-                        BS->Stall(600000);
+                        BS->Stall(500000);
                         break;
                     } else {
-                        // Securely zero out buffer on invalid attempt
+                        // Invalid PIN entered
                         PinLen = 0;
                         SecureZeroMemory(EnteredDigits, sizeof(EnteredDigits));
                         SecureZeroMemory(MaskedDisplay, sizeof(MaskedDisplay));
 
                         if (SystemTable->ConOut) {
-                            SystemTable->ConOut->SetCursorPosition(SystemTable->ConOut, 20, 21);
-                            SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0C);
-                            SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"[ACCESS DENIED] Invalid Emergency PIN!");
+                            SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0C); // Light Red
+                            SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"\r\n  [ACCESS DENIED] Invalid Master PIN/Code! Please try again.\r\n");
                         }
-                        BS->Stall(800000);
+                        BS->Stall(700000);
                         RenderPreBootLockScreen(SystemTable, &GfxCtx, PC_NUMBER_DEFAULT, StatusMsg, MaskedDisplay);
                     }
                 }
-                // Numeric Digits (0 - 9)
-                else if (Key.UnicodeChar >= L'0' && Key.UnicodeChar <= L'9') {
-                    if (PinLen < 15) {
+                // Alphanumeric Characters (0-9, A-Z, a-z)
+                else if ((Key.UnicodeChar >= L'0' && Key.UnicodeChar <= L'9') ||
+                         (Key.UnicodeChar >= L'a' && Key.UnicodeChar <= L'z') ||
+                         (Key.UnicodeChar >= L'A' && Key.UnicodeChar <= L'Z')) {
+                    if (PinLen < 20) {
                         EnteredDigits[PinLen] = Key.UnicodeChar;
-                        MaskedDisplay[PinLen] = L'*';
+                        MaskedDisplay[PinLen] = Key.UnicodeChar; // Show actual character for easy typing
                         PinLen++;
                         EnteredDigits[PinLen] = L'\0';
                         MaskedDisplay[PinLen] = L'\0';
@@ -170,7 +151,7 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
             }
         }
 
-        // B. Periodically Poll Universal Network Gateway (Wired + Wi-Fi)
+        // B. Non-blocking Network Check
         PollCounter++;
         if (PollCounter >= 40) {
             PollCounter = 0;
@@ -181,24 +162,23 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
                 SecureZeroMemory(ActiveAdminPin, sizeof(ActiveAdminPin));
 
                 if (SystemTable->ConOut) {
-                    SystemTable->ConOut->SetCursorPosition(SystemTable->ConOut, 20, 21);
                     SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0A);
-                    SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"[REMOTE UNLOCKED] Authorized via Mobile App!");
+                    SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"\r\n  [REMOTE UNLOCKED] Authorized via Mobile Controller! Starting Windows...\r\n");
                 }
-                BS->Stall(600000);
+                BS->Stall(500000);
                 break;
             }
         }
 
-        // Sleep 25ms to reduce CPU power consumption
-        BS->Stall(25000);
+        // Smooth 20ms sleep
+        BS->Stall(20000);
     }
 
-    // 8. Authorization Succeeded -> Chainload Windows Boot Manager
+    // 6. Chainload Windows Boot Manager
     if (SystemTable->ConOut) {
         SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
         SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 0x0F);
-        SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"Pre-Boot Security Verification Succeeded.\r\nStarting Windows...\r\n");
+        SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"Pre-Boot Security Clearance Verified.\r\nStarting Microsoft Windows...\r\n");
     }
 
     return ChainloadWindows(ImageHandle, SystemTable);

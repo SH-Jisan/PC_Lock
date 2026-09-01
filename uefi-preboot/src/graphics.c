@@ -1,136 +1,77 @@
-#include "graphics.h"
-
-static EFI_GUID gGopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+﻿#include "graphics.h"
 
 EFI_STATUS InitGraphics(EFI_BOOT_SERVICES *BS, GOP_CONTEXT *Ctx)
 {
-    EFI_STATUS Status;
-    EFI_GRAPHICS_OUTPUT_PROTOCOL *Gop = NULL;
-
-    Status = BS->LocateProtocol(&gGopGuid, NULL, (VOID**)&Gop);
-    if (EFI_ERROR(Status) || Gop == NULL) {
-        return EFI_UNSUPPORTED;
-    }
-
-    Ctx->Gop = Gop;
-    Ctx->Width = Gop->Mode->Info->HorizontalResolution;
-    Ctx->Height = Gop->Mode->Info->VerticalResolution;
-
+    if (!Ctx) return EFI_INVALID_PARAMETER;
+    Ctx->Gop = NULL;
+    Ctx->Width = 80;
+    Ctx->Height = 25;
     return EFI_SUCCESS;
-}
-
-VOID ClearScreen(GOP_CONTEXT *Ctx, EFI_GRAPHICS_OUTPUT_BLT_PIXEL Color)
-{
-    if (!Ctx || !Ctx->Gop) return;
-
-    Ctx->Gop->Blt(
-        Ctx->Gop,
-        &Color,
-        EfiBltVideoFill,
-        0, 0,
-        0, 0,
-        Ctx->Width, Ctx->Height,
-        0
-    );
-}
-
-VOID DrawRect(GOP_CONTEXT *Ctx, UINTN X, UINTN Y, UINTN Width, UINTN Height, EFI_GRAPHICS_OUTPUT_BLT_PIXEL Color)
-{
-    if (!Ctx || !Ctx->Gop) return;
-
-    Ctx->Gop->Blt(
-        Ctx->Gop,
-        &Color,
-        EfiBltVideoFill,
-        0, 0,
-        X, Y,
-        Width, Height,
-        0
-    );
-}
-
-VOID DrawCard(GOP_CONTEXT *Ctx, UINTN X, UINTN Y, UINTN Width, UINTN Height, EFI_GRAPHICS_OUTPUT_BLT_PIXEL BgColor, EFI_GRAPHICS_OUTPUT_BLT_PIXEL BorderColor)
-{
-    // Outer border (2px)
-    DrawRect(Ctx, X, Y, Width, Height, BorderColor);
-    // Inner background
-    DrawRect(Ctx, X + 2, Y + 2, Width - 4, Height - 4, BgColor);
 }
 
 VOID RenderPreBootLockScreen(EFI_SYSTEM_TABLE *ST, GOP_CONTEXT *Ctx, const CHAR16 *PcNumber, const CHAR16 *StatusMessage, const CHAR16 *EnteredPin)
 {
-    // Palette definition (BGR format)
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL BgDark      = { 25, 15, 11, 0 };    // #0B0F19
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL CardBg      = { 46, 30, 22, 0 };    // #161E2E
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL CardBorder  = { 85, 65, 51, 0 };    // #334155
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL CyanAccent  = { 248, 189, 56, 0 };  // #38BDF8
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL RedLocked   = { 68, 68, 239, 0 };   // #EF4444
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL BarTop      = { 30, 20, 15, 0 };    // Header bar
+    if (!ST || !ST->ConOut) return;
 
-    // Fill background
-    ClearScreen(Ctx, BgDark);
+    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *Out = ST->ConOut;
 
-    // Top Header Banner (Height 50px)
-    DrawRect(Ctx, 0, 0, Ctx->Width, 50, BarTop);
-    DrawRect(Ctx, 0, 48, Ctx->Width, 2, CyanAccent);
+    // 1. Clear Screen
+    Out->ClearScreen(Out);
+    Out->EnableCursor(Out, FALSE);
 
-    // Central Card
-    UINTN CardW = 620;
-    UINTN CardH = 380;
-    UINTN CardX = (Ctx->Width > CardW) ? (Ctx->Width - CardW) / 2 : 20;
-    UINTN CardY = (Ctx->Height > CardH) ? (Ctx->Height - CardH) / 2 : 60;
+    // 2. Cyber Header Banner (Cyan / White)
+    Out->SetAttribute(Out, 0x0B); // Light Cyan
+    Out->SetCursorPosition(Out, 0, 1);
+    Out->OutputString(Out, (CHAR16*)L" ==============================================================================\r\n");
+    Out->SetAttribute(Out, 0x0F); // Bright White
+    Out->OutputString(Out, (CHAR16*)L"                   CYBER CAFE SECURE PRE-BOOT CONTROLLER                       \r\n");
+    Out->SetAttribute(Out, 0x0B);
+    Out->OutputString(Out, (CHAR16*)L" ==============================================================================\r\n\r\n");
 
-    DrawCard(Ctx, CardX, CardY, CardW, CardH, CardBg, CardBorder);
+    // 3. Security Status Box (Red Alert)
+    Out->SetAttribute(Out, 0x0C); // Light Red
+    Out->OutputString(Out, (CHAR16*)L"  [!] SECURITY NOTICE: Workstation is currently LOCKED before Windows boot.\r\n\r\n");
 
-    // Status Header Box inside Card
-    DrawRect(Ctx, CardX + 20, CardY + 20, CardW - 40, 50, RedLocked);
+    // 4. Terminal Info
+    Out->SetAttribute(Out, 0x0E); // Yellow
+    Out->OutputString(Out, (CHAR16*)L"  [*] Terminal Identifier : ");
+    Out->SetAttribute(Out, 0x0F);
+    Out->OutputString(Out, (CHAR16*)PcNumber);
+    Out->OutputString(Out, (CHAR16*)L"\r\n");
 
-    // PIN Entry Box inside Card
-    EFI_GRAPHICS_OUTPUT_BLT_PIXEL InputBg = { 20, 15, 10, 0 };
-    DrawRect(Ctx, CardX + 40, CardY + 260, CardW - 80, 45, InputBg);
-    DrawRect(Ctx, CardX + 40, CardY + 303, CardW - 80, 2, CyanAccent);
+    Out->SetAttribute(Out, 0x0E);
+    Out->OutputString(Out, (CHAR16*)L"  [*] Security Status     : ");
+    Out->SetAttribute(Out, 0x0C);
+    Out->OutputString(Out, (CHAR16*)L"LOCKED (Firmware Enforced)\r\n");
 
-    // Use UEFI Text output positioned on screen
-    if (ST && ST->ConOut) {
-        ST->ConOut->SetAttribute(ST->ConOut, 0x0F); // White on Black
-        
-        // Print Top Bar text
-        ST->ConOut->SetCursorPosition(ST->ConOut, 2, 1);
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"[ CYBER CAFE SECURE PRE-BOOT CONTROLLER ]");
+    Out->SetAttribute(Out, 0x0E);
+    Out->OutputString(Out, (CHAR16*)L"  [*] Network Gateway     : ");
+    Out->SetAttribute(Out, 0x0B);
+    Out->OutputString(Out, (CHAR16*)StatusMessage);
+    Out->OutputString(Out, (CHAR16*)L"\r\n\r\n");
 
-        // Print PC Number
-        ST->ConOut->SetCursorPosition(ST->ConOut, 25, 6);
-        ST->ConOut->SetAttribute(ST->ConOut, 0x0E); // Yellow
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"TERMINAL IDENTIFIER: ");
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)PcNumber);
+    // 5. User Instruction
+    Out->SetAttribute(Out, 0x07); // Light Gray
+    Out->OutputString(Out, (CHAR16*)L"  ----------------------------------------------------------------------------\r\n");
+    Out->OutputString(Out, (CHAR16*)L"  Please unlock this workstation from the Counter / Mobile Controller App.\r\n");
+    Out->OutputString(Out, (CHAR16*)L"  Windows will automatically start as soon as an unlock signal is received.\r\n");
+    Out->OutputString(Out, (CHAR16*)L"  ----------------------------------------------------------------------------\r\n\r\n");
 
-        // Status text
-        ST->ConOut->SetCursorPosition(ST->ConOut, 25, 9);
-        ST->ConOut->SetAttribute(ST->ConOut, 0x0C); // Light Red
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"STATUS: [ SYSTEM LOCKED BEFORE BOOT ]");
-
-        // Message
-        ST->ConOut->SetCursorPosition(ST->ConOut, 20, 12);
-        ST->ConOut->SetAttribute(ST->ConOut, 0x07); // Light Gray
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"Please purchase a session from the Counter / Reception.");
-
-        ST->ConOut->SetCursorPosition(ST->ConOut, 20, 14);
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"Windows will automatically boot once unlocked.");
-
-        // Polling info
-        ST->ConOut->SetCursorPosition(ST->ConOut, 20, 16);
-        ST->ConOut->SetAttribute(ST->ConOut, 0x0B); // Light Cyan
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)StatusMessage);
-
-        // Emergency Admin PIN prompt
-        ST->ConOut->SetCursorPosition(ST->ConOut, 20, 19);
-        ST->ConOut->SetAttribute(ST->ConOut, 0x0A); // Light Green
-        ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"Emergency Admin Master PIN: ");
-        if (EnteredPin && EnteredPin[0] != L'\0') {
-            ST->ConOut->OutputString(ST->ConOut, (CHAR16*)EnteredPin);
-        } else {
-            ST->ConOut->SetAttribute(ST->ConOut, 0x08); // Dark Gray
-            ST->ConOut->OutputString(ST->ConOut, (CHAR16*)L"[Type 6-digit PIN on keyboard]");
-        }
+    // 6. Emergency PIN Prompt
+    Out->SetAttribute(Out, 0x0A); // Light Green
+    Out->OutputString(Out, (CHAR16*)L"  >> EMERGENCY MASTER PIN : [ ");
+    
+    if (EnteredPin && EnteredPin[0] != L'\0') {
+        Out->SetAttribute(Out, 0x0F); // White
+        Out->OutputString(Out, (CHAR16*)EnteredPin);
+    } else {
+        Out->SetAttribute(Out, 0x08); // Dark Gray
+        Out->OutputString(Out, (CHAR16*)L"Type PIN or Master Code & press ENTER");
     }
+
+    Out->SetAttribute(Out, 0x0A);
+    Out->OutputString(Out, (CHAR16*)L" ]\r\n\r\n");
+
+    Out->SetAttribute(Out, 0x08); // Dark Gray
+    Out->OutputString(Out, (CHAR16*)L"  (Supported Master Codes: 998877, SHJ, shj | Backspace to edit | Enter to verify)\r\n");
 }
