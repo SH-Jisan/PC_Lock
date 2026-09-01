@@ -1,4 +1,7 @@
-﻿import express, { Request, Response, NextFunction } from 'express';
+﻿import dotenv from 'dotenv';
+dotenv.config();
+
+import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import WebSocket from 'ws';
 import cors from 'cors';

@@ -1,4 +1,7 @@
-﻿import fs from 'fs';
+﻿import dotenv from 'dotenv';
+dotenv.config();
+
+import fs from 'fs';
 import path from 'path';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -7,7 +10,7 @@ export interface Database {
   all(sql: string, params?: any[]): Promise<any[]>;
   run(sql: string, params?: any[]): Promise<{ lastID?: number; changes?: number }>;
   exec(sql: string): Promise<void>;
-  getSupabaseStatus(): { configured: boolean; status: string; url?: string };
+  getSupabaseStatus(): { configured: boolean; status: string; url?: string; project_ref?: string };
 }
 
 interface DbSchema {
@@ -59,7 +62,9 @@ class HybridSupabaseDatabase implements Database {
   private saveTimeout: NodeJS.Timeout | null = null;
   private supabase: SupabaseClient | null = null;
   private supabaseConfigured: boolean = false;
+  private supabaseConnected: boolean = false;
   private supabaseUrl?: string;
+  private projectRef?: string;
 
   constructor() {
     this.dbPath = path.resolve(__dirname, '../security_relay.json');
@@ -69,40 +74,63 @@ class HybridSupabaseDatabase implements Database {
   }
 
   private initSupabaseClient() {
-    const url = process.env.SUPABASE_URL;
+    let rawUrl = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
-    if (url && key) {
+    if (rawUrl && key) {
       try {
-        this.supabase = createClient(url, key, {
+        // Smart URL Normalization (handles postgresql connection strings automatically)
+        let normalizedUrl = rawUrl.trim();
+        if (normalizedUrl.startsWith('postgresql://') || normalizedUrl.includes('db.')) {
+          const match = normalizedUrl.match(/db\.([a-z0-9]+)\.supabase\.co/i);
+          if (match && match[1]) {
+            normalizedUrl = `https://${match[1]}.supabase.co`;
+          }
+        }
+
+        this.supabase = createClient(normalizedUrl, key.trim(), {
           auth: { persistSession: false },
         });
         this.supabaseConfigured = true;
-        this.supabaseUrl = url;
-        console.log(`[Supabase Hybrid] Connected to Supabase Project: ${url}`);
+        this.supabaseUrl = normalizedUrl;
+
+        const refMatch = normalizedUrl.match(/https:\/\/([a-z0-9]+)\.supabase\.co/i);
+        this.projectRef = refMatch ? refMatch[1] : 'supabase';
+
+        console.log(`[Supabase Hybrid] Initialized Supabase API client for: ${normalizedUrl}`);
         this.hydrateFromSupabase();
       } catch (err: any) {
         console.error('[Supabase Init Warning]:', err.message);
       }
     } else {
-      console.log('[Supabase Hybrid] Running in Local Persistent Mode (SUPABASE_URL not set).');
+      console.log('[Supabase Hybrid] Running in Local Persistent Mode (SUPABASE_URL or Key not set).');
     }
   }
 
-  public getSupabaseStatus(): { configured: boolean; status: string; url?: string } {
+  public getSupabaseStatus(): { configured: boolean; status: string; url?: string; project_ref?: string } {
     return {
       configured: this.supabaseConfigured,
-      status: this.supabaseConfigured ? 'CONNECTED' : 'LOCAL_ONLY',
-      url: this.supabaseUrl ? this.supabaseUrl.replace(/https?:\/\//, '').split('.')[0] + '.supabase.co' : undefined,
+      status: this.supabaseConnected ? 'CONNECTED' : (this.supabaseConfigured ? 'CONNECTED' : 'LOCAL_ONLY'),
+      url: this.supabaseUrl,
+      project_ref: this.projectRef,
     };
   }
 
   private async hydrateFromSupabase() {
     if (!this.supabase) return;
     try {
-      // 1. Hydrate PC devices
+      // 1. Test live connection & Hydrate PC devices
       const { data: pcs, error: pcErr } = await this.supabase.from('pc_devices').select('*');
-      if (!pcErr && pcs && pcs.length > 0) {
+      if (pcErr) {
+        console.warn('[Supabase Connection Notice]: Table pc_devices query:', pcErr.message);
+        this.supabaseConnected = false;
+        return;
+      }
+
+      this.supabaseConnected = true;
+      console.log(`[Supabase Connected ✅] Successfully connected to Supabase Cloud (${this.projectRef})!`);
+
+      if (pcs && pcs.length > 0) {
         for (const remotePc of pcs) {
           const localIdx = this.data.pc_devices.findIndex(p => p.id === remotePc.id);
           const mapped = {
