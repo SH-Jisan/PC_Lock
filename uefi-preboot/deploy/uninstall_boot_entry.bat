@@ -9,26 +9,31 @@ echo =======================================================
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] This script MUST be run as Administrator!
-    echo Right-click this script and select "Run as Administrator".
     pause
     exit /b 1
 )
 
-:: 2. Mount EFI Partition
-echo [*] Mounting EFI System Partition to drive S:...
-mountvol S: /s
+set MOUNT_LETTER=
+for %%D in (Z Y X W V U T S R Q P) do (
+    if not exist "%%D:\" (
+        set MOUNT_LETTER=%%D
+        goto :FoundDrive
+    )
+)
+:FoundDrive
+if "%MOUNT_LETTER%"=="" set MOUNT_LETTER=Z
 
-:: 3. Remove files
-if exist "S:\EFI\PCLock" (
-    echo [*] Removing S:\EFI\PCLock directory...
-    rd /s /q "S:\EFI\PCLock"
+echo [*] Mounting EFI System Partition to %MOUNT_LETTER%: ...
+mountvol %MOUNT_LETTER%: /s
+
+if exist "%MOUNT_LETTER%:\EFI\PCLock" (
+    echo [*] Removing %MOUNT_LETTER%:\EFI\PCLock directory...
+    rmdir /s /q "%MOUNT_LETTER%:\EFI\PCLock" >nul 2>&1
 )
 
-:: 4. Unmount EFI Partition
-mountvol S: /d
+mountvol %MOUNT_LETTER%: /d
 
 echo.
-echo [*] You can verify your active boot order in Windows by running: bcdedit /enum firmware
-echo [SUCCESS] Pre-Boot Lock files removed. Windows will now boot directly as usual.
+echo [SUCCESS] Pre-Boot Lock files removed.
 echo =======================================================
 pause

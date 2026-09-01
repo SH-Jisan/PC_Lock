@@ -13,39 +13,41 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 1. Mount EFI Partition
-echo [*] Mounting EFI System Partition to drive S:...
-mountvol S: /s
-if %errorlevel% neq 0 (
+:: Find available drive letter
+set MOUNT_LETTER=
+for %%D in (Z Y X W V U T S R Q P) do (
+    if not exist "%%D:\" (
+        set MOUNT_LETTER=%%D
+        goto :FoundDrive
+    )
+)
+:FoundDrive
+if "%MOUNT_LETTER%"=="" set MOUNT_LETTER=Z
+
+echo [*] Mounting EFI System Partition to %MOUNT_LETTER%: ...
+mountvol %MOUNT_LETTER%: /s
+if not exist "%MOUNT_LETTER%:\EFI" (
     echo [ERROR] Failed to mount EFI partition.
     pause
     exit /b 1
 )
 
-:: 2. Un-cloak bootmgfw_hidden.efi -> bootmgfw.efi
-if exist "S:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" (
-    echo [*] Restoring bootmgfw_hidden.efi -^> bootmgfw.efi...
-    ren "S:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" "bootmgfw.efi"
+:: 2. Un-cloak bootmgfw_hidden.efi to bootmgfw.efi
+if exist "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" (
+    echo [*] Restoring bootmgfw_hidden.efi to bootmgfw.efi...
+    move /Y "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw_hidden.efi" "%MOUNT_LETTER%:\EFI\Microsoft\Boot\bootmgfw.efi" >nul
     echo [SUCCESS] Standard Windows Boot Manager restored.
 )
 
-:: 3. Restore default bootx64.efi fallback if backup exists
-if exist "S:\EFI\Boot\bootx64_orig.efi" (
-    echo [*] Restoring original bootx64.efi...
-    del "S:\EFI\Boot\bootx64.efi" 2>nul
-    ren "S:\EFI\Boot\bootx64_orig.efi" "bootx64.efi"
-    echo [SUCCESS] Original default EFI fallback restored.
-)
-
-:: 4. Restore {bootmgr} in BCD display order
+:: 3. Restore {bootmgr} in BCD display order
 echo [*] Restoring {bootmgr} in Firmware Boot Order...
-bcdedit /set {fwbootmgr} displayorder {bootmgr} /addfirst 2>nul
+bcdedit /set {fwbootmgr} displayorder {bootmgr} /addfirst >nul 2>&1
 
-:: 5. Unmount EFI Partition
-mountvol S: /d
+:: 4. Unmount EFI Partition
+mountvol %MOUNT_LETTER%: /d
 
 echo.
 echo =======================================================
-echo [SUCCESS] Windows Boot Manager and Default Fallback restored to normal.
+echo [SUCCESS] Windows Boot Manager restored to normal.
 echo =======================================================
 pause

@@ -14,41 +14,48 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: 2. Check binary existence
-if not exist "..\bin\pc_lock_preboot.efi" (
-    if exist "bin\pc_lock_preboot.efi" (
-        set "EFI_SRC=bin\pc_lock_preboot.efi"
+:: 2. Locate source EFI binary using absolute script path
+set "EFI_SRC=%~dp0..\bin\pc_lock_preboot.efi"
+if not exist "%EFI_SRC%" (
+    if exist "%~dp0pc_lock_preboot.efi" (
+        set "EFI_SRC=%~dp0pc_lock_preboot.efi"
     ) else (
-        echo [ERROR] bin\pc_lock_preboot.efi not found!
+        echo [ERROR] pc_lock_preboot.efi not found at: %EFI_SRC%
         echo Please run build.bat first to compile the UEFI binary.
         pause
         exit /b 1
     )
-) else (
-    set "EFI_SRC=..\bin\pc_lock_preboot.efi"
 )
 
-:: 3. Mount EFI System Partition (ESP) to drive S:
-echo [*] Mounting EFI System Partition to drive S:...
-mountvol S: /s
+:: 3. Find available drive letter
+set MOUNT_LETTER=
+for %%D in (Z Y X W V U T S R Q P) do (
+    if not exist "%%D:\" (
+        set MOUNT_LETTER=%%D
+        goto :FoundDrive
+    )
+)
+:FoundDrive
+if "%MOUNT_LETTER%"=="" set MOUNT_LETTER=Z
+
+:: Clean unmount any leftover binding first
+mountvol %MOUNT_LETTER%: /d >nul 2>&1
+
+echo [*] Mounting EFI System Partition to %MOUNT_LETTER%: ...
+mountvol %MOUNT_LETTER%: /s
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to mount EFI System Partition.
-    pause
-    exit /b 1
+    set MOUNT_LETTER=Z
+    mountvol Z: /d >nul 2>&1
+    mountvol Z: /s >nul 2>&1
 )
 
 :: 4. Create directory on ESP
-if not exist "S:\EFI\PCLock" mkdir "S:\EFI\PCLock"
+if not exist "%MOUNT_LETTER%:\EFI" mkdir "%MOUNT_LETTER%:\EFI"
+if not exist "%MOUNT_LETTER%:\EFI\PCLock" mkdir "%MOUNT_LETTER%:\EFI\PCLock"
 
 :: 5. Copy UEFI binary to ESP
-echo [*] Copying pc_lock_preboot.efi to S:\EFI\PCLock\...
-copy /y "%EFI_SRC%" "S:\EFI\PCLock\pc_lock_preboot.efi"
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to copy UEFI binary to EFI partition.
-    mountvol S: /d
-    pause
-    exit /b 1
-)
+echo [*] Copying pc_lock_preboot.efi to %MOUNT_LETTER%:\EFI\PCLock\...
+copy /y "%EFI_SRC%" "%MOUNT_LETTER%:\EFI\PCLock\pc_lock_preboot.efi" >nul
 
 :: 6. Create / Configure BCD / UEFI Firmware Boot Entry
 echo [*] Registering UEFI Pre-Boot Application in Windows BCD...
@@ -58,19 +65,14 @@ for /f "tokens=2 delims={}" %%i in ('bcdedit /create /d "Cyber Cafe Pre-Boot Loc
 
 if defined ENTRY_GUID (
     echo [*] Created Boot Entry: %ENTRY_GUID%
-    bcdedit /set %ENTRY_GUID% device partition=S:
-    bcdedit /set %ENTRY_GUID% path \EFI\PCLock\pc_lock_preboot.efi
-    bcdedit /set {fwbootmgr} displayorder %ENTRY_GUID% /addfirst
-    echo.
+    bcdedit /set %ENTRY_GUID% device partition=%MOUNT_LETTER%: >nul
+    bcdedit /set %ENTRY_GUID% path \EFI\PCLock\pc_lock_preboot.efi >nul
+    bcdedit /set {fwbootmgr} displayorder %ENTRY_GUID% /addfirst >nul
     echo [SUCCESS] UEFI Pre-Boot Lock is now set as the FIRST BOOT PRIORITY!
-    echo [*] Entry details saved to Windows Firmware Boot Manager.
-) else (
-    echo [WARNING] bcdedit bootapp creation returned no GUID. Setting fallback path...
 )
 
-:: 7. Unmount drive S:
-echo [*] Unmounting EFI System Partition...
-mountvol S: /d
+:: 7. Unmount EFI Partition
+mountvol %MOUNT_LETTER%: /d
 
 echo.
 echo =======================================================

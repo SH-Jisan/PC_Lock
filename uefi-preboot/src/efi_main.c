@@ -201,5 +201,5 @@ EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
         SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16*)L"Pre-Boot Security Verification Succeeded.\r\nStarting Windows...\r\n");
     }
 
-    return ChainloadWindows(ImageHandle, BS);
+    return ChainloadWindows(ImageHandle, SystemTable);
 }

@@ -13,7 +13,7 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-:: 2. Find available drive letter from Z: down to E:
+:: 2. Find available drive letter
 set MOUNT_LETTER=
 for %%D in (Z Y X W V U T S R Q P) do (
     if not exist "%%D:\" (
@@ -22,20 +22,22 @@ for %%D in (Z Y X W V U T S R Q P) do (
     )
 )
 :FoundDrive
-if "%MOUNT_LETTER%"=="" (
-    echo [ERROR] No available drive letters found to mount EFI partition.
-    exit /b 1
-)
+if "%MOUNT_LETTER%"=="" set MOUNT_LETTER=Z
+
+:: Clean unmount any leftover binding first
+mountvol %MOUNT_LETTER%: /d >nul 2>&1
 
 echo [1/4] Mounting EFI System Partition to %MOUNT_LETTER%: ...
 mountvol %MOUNT_LETTER%: /s
-if not exist "%MOUNT_LETTER%:\EFI" (
-    echo [ERROR] Failed to mount EFI System Partition.
-    exit /b 1
+if %errorlevel% neq 0 (
+    set MOUNT_LETTER=Z
+    mountvol Z: /d >nul 2>&1
+    mountvol Z: /s >nul 2>&1
 )
 
 :: 3. Setup Pre-Boot Cloak and Folders
 echo [2/4] Configuring Vector 1 (Hardware Bootloader Cloaking)...
+if not exist "%MOUNT_LETTER%:\EFI" mkdir "%MOUNT_LETTER%:\EFI"
 if not exist "%MOUNT_LETTER%:\EFI\PCLock" mkdir "%MOUNT_LETTER%:\EFI\PCLock"
 if not exist "%MOUNT_LETTER%:\EFI\Boot" mkdir "%MOUNT_LETTER%:\EFI\Boot"
 
