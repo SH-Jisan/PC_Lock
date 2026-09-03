@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using PC.SecurityAgent.LockEngine;
 
 namespace PC.SecurityAgent.Controllers
 {
@@ -28,71 +29,66 @@ namespace PC.SecurityAgent.Controllers
         public static string ActiveDeviceId { get; set; } = string.Empty;
         public static string RelayHttpBaseUrl { get; set; } = "https://pc-lock.onrender.com";
 
+        static LockController()
+        {
+            // Register callback so on-screen PIN unlock propagates to cloud and controller
+            LockEngineCoordinator.RegisterExternalUnlockCallback(() =>
+            {
+                Console.WriteLine("[LockController] On-screen PIN authentication passed. Notifying cloud...");
+                UnlockPC(true);
+            });
+        }
+
         public static bool LockPC(bool notifyCloud = false)
         {
             if (CurrentState == LockState.LOCKED)
             {
-                // Already locked, ignore redundant command
+                // Ensure lock screen is active even if duplicate lock arrives
+                LockEngineCoordinator.ShowLockScreen();
                 return true;
             }
 
-            Console.WriteLine("[LockController] Remote LOCK Command Received. Enforcing Windows Lock...");
+            Console.WriteLine("[LockController] Remote LOCK Command Received. Enforcing Hybrid Dual-Plane Lock...");
             
             SetRegistryLockState(LockState.LOCKED);
             CurrentState = LockState.LOCKED;
 
-            // Run BootGuard Healer to enforce pre-boot firmware cloak on reboot
+            // Epoch 1: Pre-Boot Plane - Enforce firmware pre-boot cloak so reboot intercepts before Windows
             Task.Run(() => BootGuardHealer.HealBootConfiguration());
 
-            // 1. Direct Win32 Lock Screen API
-            bool success = LockWorkStation();
-            if (!success)
-            {
-                int error = Marshal.GetLastWin32Error();
-                Console.WriteLine($"[LockController Warning] LockWorkStation returned: {error}. Attempting fallback execution...");
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = "rundll32.exe",
-                        Arguments = "user32.dll,LockWorkStation",
-                        UseShellExecute = true
-                    });
-                    success = true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[LockController Error] Fallback lock execution error: {ex.Message}");
-                }
-            }
+            // Epoch 2: Post-Boot Plane - Activate Isolated Desktop + Low-Level Keyboard Shield + Cyber UI
+            LockEngineCoordinator.ShowLockScreen();
 
             if (notifyCloud)
             {
                 _ = SyncStatusToCloudAsync("LOCKED");
             }
 
-            return success;
+            return true;
         }
 
         public static bool UnlockPC(bool notifyCloud = false)
         {
             if (CurrentState == LockState.UNLOCKED)
             {
-                // Already unlocked, ignore redundant command completely
+                LockEngineCoordinator.HideLockScreen();
                 return true;
             }
 
-            Console.WriteLine("[LockController] Remote UNLOCK Command Received. Restoring UNLOCKED state...");
+            Console.WriteLine("[LockController] Remote UNLOCK Command Received. Deactivating Lock Engine...");
 
             SetRegistryLockState(LockState.UNLOCKED);
             CurrentState = LockState.UNLOCKED;
+
+            // Epoch 2: Post-Boot Plane - Restore original desktop and remove keyboard hooks
+            LockEngineCoordinator.HideLockScreen();
 
             if (notifyCloud)
             {
                 _ = SyncStatusToCloudAsync("UNLOCKED");
             }
 
-            Console.WriteLine("[LockController] Lock state set to UNLOCKED. Windows Session unlocked.");
+            Console.WriteLine("[LockController] Windows Session restored to normal state.");
             return true;
         }
 
