@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal enabledelayedexpansion
 
 echo ===============================================================================
@@ -25,7 +25,7 @@ if %errorlevel% equ 0 (
     echo [INFO] To compile the standalone binaries, install the SDK once using:
     echo        winget install Microsoft.DotNet.SDK.8
     echo.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -52,7 +52,7 @@ echo [2/4] Compiling Standalone PC Security Agent (Self-Contained Single-File)..
 
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to compile PC.SecurityAgent.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -78,7 +78,7 @@ echo [3/4] Compiling Standalone DeployManager Hub (Self-Contained Single-File)..
 
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to compile DeployManager.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 echo [✔] Standalone DeployManager.exe created successfully.
@@ -148,4 +148,4 @@ echo   • HOW_TO_RUN_ON_CLIENT_PC.txt
 echo.
 echo  You can now copy the 'release_package' folder to ANY other PC and run directly!
 echo ===============================================================================
-pause
+if not defined CI pause

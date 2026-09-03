@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -56,17 +56,32 @@ namespace DeployManager.Services
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 ResolveSecurityAgent(baseDir, out string agentExe, out string agentArgs);
 
+                if (!File.Exists(agentExe))
+                {
+                    log($"❌ [ERROR] Security Agent executable was not found at: {agentExe}");
+                    log("   Please compile the agent or run build_all_standalone.bat first.");
+                    return false;
+                }
+
                 ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
 
                 // Start agent detached in background
-                Process.Start(new ProcessStartInfo
+                try
                 {
-                    FileName = agentExe,
-                    Arguments = agentArgs,
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true
-                });
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = agentExe,
+                        Arguments = agentArgs,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    });
+                }
+                catch (Exception pEx)
+                {
+                    log($"❌ [ERROR] Failed to start Security Agent: {pEx.Message}");
+                    return false;
+                }
 
                 // Configure Windows Startup Run Key for reboot persistence
                 try
@@ -145,15 +160,29 @@ namespace DeployManager.Services
 
                 ResolveSecurityAgent(baseDir, out string agentExe, out string agentArgs);
 
-                ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
-                Process.Start(new ProcessStartInfo
+                if (!File.Exists(agentExe))
                 {
-                    FileName = agentExe,
-                    Arguments = agentArgs,
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true
-                });
+                    log($"❌ [ERROR] Security Agent executable was not found at: {agentExe}");
+                    return false;
+                }
+
+                ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = agentExe,
+                        Arguments = agentArgs,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    });
+                }
+                catch (Exception pEx)
+                {
+                    log($"❌ [ERROR] Failed to start Security Agent: {pEx.Message}");
+                    return false;
+                }
 
                 progress.Report(100);
                 log("🎉 [SUCCESS] Firmware Pre-Boot with Watchdog Deployed.");
