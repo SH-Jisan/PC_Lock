@@ -89,10 +89,10 @@ echo [4/4] Finalizing Zero-Dependency Distribution Package...
 if exist "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" (
     copy /y "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" "%DIST_DIR%\UEFI\pc_lock_preboot.efi" >nul
     copy /y "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" "%DIST_DIR%\pc_lock_preboot.efi" >nul
-    echo [✔] Bundled pre-compiled UEFI firmware binary (pc_lock_preboot.efi).
+    echo [✔] Bundled pre-compiled UEFI firmware binary: pc_lock_preboot.efi
 ) else (
     echo [i] Note: No pre-compiled pc_lock_preboot.efi found.
-    echo     (Not required if using Enterprise Zero-Risk mode).
+    echo     Not required if using Enterprise Zero-Risk mode.
 )
 
 if exist "%~dp0mobile-app\index.html" (
@@ -102,36 +102,35 @@ if exist "%~dp0mobile-app\index.html" (
 )
 
 :: Create Target PC User Guide
-(
-echo ===============================================================================
-echo   PC SECURITY SYSTEM - CLIENT / TARGET PC RUN GUIDE
-echo ===============================================================================
-echo.
-echo [BANGLA]
-echo এই ফোল্ডারটির ভেতরের সফটওয়্যার চালানোর জন্য অন্য কোনো পিসিতে
-echo .NET 8, LLVM, Clang বা কোনো সফটওয়্যার ইনস্টল করার প্রয়োজন নেই!
-echo.
-echo কীভাবে চালাবেন:
-echo ১. এই সম্পূর্ণ 'release_package' ফোল্ডারটি পেনড্রাইভ দিয়ে টার্গেট পিসিতে নিন।
-echo ২. DeployManager.exe এর ওপর রাইট ক্লিক করে "Run as administrator" সিলেক্ট করুন।
-echo ৩. স্ক্রিনের "Deploy Enterprise Security" বাটনে ক্লিক করুন।
-echo    ব্যস! ব্যাকগ্রাউন্ডে পিসি সিকিউরিটি ইঞ্জিন স্থায়ীভাবে ইনস্টল ও চালু হয়ে যাবে।
-echo.
-echo আনইনস্টল করতে চাইলে:
-echo DeployManager.exe খুলে "Completely Uninstall & Restore" বাটনে ক্লিক করুন।
-echo.
-echo -------------------------------------------------------------------------------
-echo [ENGLISH]
-echo Zero dependencies required on target client machines!
-echo All .NET Core libraries and runtimes are embedded inside the standalone binaries.
-echo.
-echo Quick Start:
-echo 1. Copy this 'release_package' folder to the target Windows 10/11 workstation.
-echo 2. Right-click 'DeployManager.exe' and click 'Run as administrator'.
-echo 3. Click 'Deploy Enterprise Security (Zero Boot Risk)'.
-echo.
-echo ===============================================================================
-) > "%DIST_DIR%\HOW_TO_RUN_ON_CLIENT_PC.txt"
+set "GUIDE_FILE=%DIST_DIR%\HOW_TO_RUN_ON_CLIENT_PC.txt"
+echo =============================================================================== > "%GUIDE_FILE%"
+echo   PC SECURITY SYSTEM - CLIENT / TARGET PC RUN GUIDE >> "%GUIDE_FILE%"
+echo =============================================================================== >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo [BANGLA] >> "%GUIDE_FILE%"
+echo এই ফোল্ডারটির ভেতরের সফটওয়্যার চালানোর জন্য অন্য কোনো পিসিতে >> "%GUIDE_FILE%"
+echo .NET 8, LLVM, Clang বা কোনো সফটওয়্যার ইনস্টল করার প্রয়োজন নেই! >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo কীভাবে চালাবেন: >> "%GUIDE_FILE%"
+echo ১. এই সম্পূর্ণ 'release_package' ফোল্ডারটি পেনড্রাইভ দিয়ে টার্গেট পিসিতে নিন। >> "%GUIDE_FILE%"
+echo ২. DeployManager.exe এর ওপর রাইট ক্লিক করে "Run as administrator" সিলেক্ট করুন। >> "%GUIDE_FILE%"
+echo ৩. স্ক্রিনের "Deploy Enterprise Security" বাটনে ক্লিক করুন। >> "%GUIDE_FILE%"
+echo    ব্যস! ব্যাকগ্রাউন্ডে পিসি সিকিউরিটি ইঞ্জিন স্থায়ীভাবে ইনস্টল ও চালু হয়ে যাবে। >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo আনইনস্টল করতে চাইলে: >> "%GUIDE_FILE%"
+echo DeployManager.exe খুলে "Completely Uninstall & Restore" বাটনে ক্লিক করুন। >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo ------------------------------------------------------------------------------- >> "%GUIDE_FILE%"
+echo [ENGLISH] >> "%GUIDE_FILE%"
+echo Zero dependencies required on target client machines! >> "%GUIDE_FILE%"
+echo All .NET Core libraries and runtimes are embedded inside the standalone binaries. >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo Quick Start: >> "%GUIDE_FILE%"
+echo 1. Copy this 'release_package' folder to the target Windows 10/11 workstation. >> "%GUIDE_FILE%"
+echo 2. Right-click 'DeployManager.exe' and click 'Run as administrator'. >> "%GUIDE_FILE%"
+echo 3. Click 'Deploy Enterprise Security (Zero Boot Risk)'. >> "%GUIDE_FILE%"
+echo( >> "%GUIDE_FILE%"
+echo =============================================================================== >> "%GUIDE_FILE%"
 
 echo.
 echo ===============================================================================
