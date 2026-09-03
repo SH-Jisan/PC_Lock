@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using PC.SecurityAgent.Controllers;
 
 namespace PC.SecurityAgent.LockEngine.Views
 {
@@ -16,6 +16,14 @@ namespace PC.SecurityAgent.LockEngine.Views
         private Label _lblStatusMsg = null!;
         private string _enteredPin = "";
         private System.Windows.Forms.Timer _clockTimer = null!;
+        private System.Windows.Forms.Timer _topmostTimer = null!;
+        private bool _isAuthorizedToClose = false;
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private const uint SWP_SHOWWINDOW = 0x0040;
 
         public LockScreenForm(Action onUnlocked)
         {
@@ -23,18 +31,30 @@ namespace PC.SecurityAgent.LockEngine.Views
             InitializeComponent();
         }
 
+        public void AllowUnlockAndClose()
+        {
+            _isAuthorizedToClose = true;
+            _clockTimer?.Stop();
+            _topmostTimer?.Stop();
+            this.Close();
+        }
+
         private void InitializeComponent()
         {
             this.FormBorderStyle = FormBorderStyle.None;
-            this.WindowState = FormWindowState.Maximized;
+            this.WindowState = FormWindowState.Normal;
+            this.StartPosition = FormStartPosition.Manual;
+            this.Bounds = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
             this.TopMost = true;
+            this.ShowInTaskbar = false;
+            this.ControlBox = false;
             this.BackColor = Color.FromArgb(10, 15, 29); // Cyber Deep Slate
             this.ForeColor = Color.White;
             this.KeyPreview = true;
             this.DoubleBuffered = true;
 
-            int screenWidth = Screen.PrimaryScreen?.Bounds.Width ?? 1920;
-            int screenHeight = Screen.PrimaryScreen?.Bounds.Height ?? 1080;
+            int screenWidth = this.Width;
+            int screenHeight = this.Height;
 
             // 1. Cyber Header Panel
             var pnlHeader = new Panel
@@ -48,14 +68,14 @@ namespace PC.SecurityAgent.LockEngine.Views
             {
                 Text = "CYBER WORKSTATION SECURITY GUARD",
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(56, 189, 248), // Sky 400
+                ForeColor = Color.FromArgb(56, 189, 248),
                 AutoSize = true,
                 Location = new Point(40, 20)
             };
 
             var lblSubtitle = new Label
             {
-                Text = "Protected by Hybrid Dual-Plane Architecture • All Local Interactivity Suspended",
+                Text = "Protected by Hybrid Dual-Plane Architecture • Desktop Session Locked",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(148, 163, 184),
                 AutoSize = true,
@@ -66,7 +86,7 @@ namespace PC.SecurityAgent.LockEngine.Views
             {
                 Text = "🔒 SYSTEM LOCKED",
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(244, 63, 94), // Rose 500
+                ForeColor = Color.FromArgb(244, 63, 94),
                 BackColor = Color.FromArgb(30, 27, 46),
                 Padding = new Padding(12, 6, 12, 6),
                 AutoSize = true,
@@ -139,7 +159,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             var lblMobileDesc = new Label
             {
-                Text = "Tap UNLOCK in your Mobile App to unlock this workstation remotely.\r\nOr scan this dynamic pairing badge with your phone:",
+                Text = "Tap UNLOCK in your Mobile App to unlock this workstation remotely.\r\nOr type master emergency PIN on the keypad to unlock:",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(203, 213, 225),
                 Location = new Point(25, 52),
@@ -159,7 +179,7 @@ namespace PC.SecurityAgent.LockEngine.Views
             {
                 Text = "● Listening for live cloud unlock command...",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-                ForeColor = Color.FromArgb(52, 211, 153), // Emerald 400
+                ForeColor = Color.FromArgb(52, 211, 153),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Size = new Size(cardWidth, 35),
                 Location = new Point(0, 310)
@@ -183,7 +203,7 @@ namespace PC.SecurityAgent.LockEngine.Views
             {
                 Text = "🔢 Emergency Master PIN",
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(244, 114, 182), // Pink 400
+                ForeColor = Color.FromArgb(244, 114, 182),
                 Location = new Point(25, 20),
                 AutoSize = true
             };
@@ -230,7 +250,8 @@ namespace PC.SecurityAgent.LockEngine.Views
                         BackColor = (txt == "OK") ? Color.FromArgb(16, 185, 129) :
                                     (txt == "C")  ? Color.FromArgb(239, 68, 68) : Color.FromArgb(30, 41, 59),
                         ForeColor = Color.White,
-                        Cursor = Cursors.Hand
+                        Cursor = Cursors.Hand,
+                        TabStop = false
                     };
                     btn.FlatAppearance.BorderSize = 0;
                     btn.Click += (s, e) => HandleKeypadPress(txt);
@@ -244,7 +265,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             this.Controls.Add(pnlContainer);
 
-            // 5. Timer for Clock
+            // 5. Timers
             _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
             _clockTimer.Tick += (s, e) =>
             {
@@ -253,8 +274,69 @@ namespace PC.SecurityAgent.LockEngine.Views
             };
             _clockTimer.Start();
 
-            // Keyboard listener
-            this.KeyDown += OnFormKeyDown;
+            // Periodic TopMost Guard
+            _topmostTimer = new System.Windows.Forms.Timer { Interval = 500 };
+            _topmostTimer.Tick += (s, e) =>
+            {
+                if (!_isAuthorizedToClose && this.IsHandleCreated)
+                {
+                    SetWindowPos(this.Handle, HWND_TOPMOST, this.Left, this.Top, this.Width, this.Height, SWP_SHOWWINDOW);
+                }
+            };
+            _topmostTimer.Start();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            this.Activate();
+            this.Focus();
+            SetWindowPos(this.Handle, HWND_TOPMOST, this.Left, this.Top, this.Width, this.Height, SWP_SHOWWINDOW);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // Global key interceptor across all controls on this form
+            Keys keyCode = keyData & Keys.KeyCode;
+
+            if (keyCode >= Keys.D0 && keyCode <= Keys.D9)
+            {
+                HandleKeypadPress(((char)('0' + (keyCode - Keys.D0))).ToString());
+                return true;
+            }
+            if (keyCode >= Keys.NumPad0 && keyCode <= Keys.NumPad9)
+            {
+                HandleKeypadPress(((char)('0' + (keyCode - Keys.NumPad0))).ToString());
+                return true;
+            }
+            if (keyCode >= Keys.A && keyCode <= Keys.Z)
+            {
+                char c = (char)('A' + (keyCode - Keys.A));
+                HandleKeypadPress(c.ToString());
+                return true;
+            }
+            if (keyCode == Keys.Back)
+            {
+                if (_enteredPin.Length > 0)
+                {
+                    _enteredPin = _enteredPin.Substring(0, _enteredPin.Length - 1);
+                    UpdatePinDisplay();
+                }
+                return true;
+            }
+            if (keyCode == Keys.Enter)
+            {
+                VerifyAndUnlock();
+                return true;
+            }
+            if (keyCode == Keys.Escape)
+            {
+                _enteredPin = "";
+                UpdatePinDisplay();
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void RenderMockQrBadge(object? sender, PaintEventArgs e)
@@ -265,17 +347,12 @@ namespace PC.SecurityAgent.LockEngine.Views
             int size = 180;
             g.Clear(Color.FromArgb(15, 23, 42));
 
-            // Draw Cyber Grid / QR Pattern
-            using var pen = new Pen(Color.FromArgb(56, 189, 248), 3);
             using var brush = new SolidBrush(Color.FromArgb(56, 189, 248));
-            using var accentBrush = new SolidBrush(Color.FromArgb(14, 165, 233));
 
-            // 3 Corner Eye Squares
             DrawQrEye(g, 15, 15, 40);
             DrawQrEye(g, size - 55, 15, 40);
             DrawQrEye(g, 15, size - 55, 40);
 
-            // Pseudo QR Data Blocks
             for (int x = 65; x < size - 65; x += 15)
             {
                 for (int y = 20; y < size - 20; y += 15)
@@ -287,7 +364,6 @@ namespace PC.SecurityAgent.LockEngine.Views
                 }
             }
 
-            // Center Lock Icon
             g.FillRectangle(new SolidBrush(Color.FromArgb(10, 15, 29)), (size - 36) / 2, (size - 36) / 2, 36, 36);
             g.DrawString("🔒", new Font("Segoe UI", 14f), Brushes.White, (size - 30) / 2, (size - 30) / 2);
         }
@@ -321,50 +397,6 @@ namespace PC.SecurityAgent.LockEngine.Views
             }
         }
 
-        private void OnFormKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.KeyCode >= Keys.D0 && e.KeyCode <= Keys.D9)
-            {
-                HandleKeypadPress(((char)('0' + (e.KeyCode - Keys.D0))).ToString());
-                e.Handled = true;
-            }
-            else if (e.KeyCode >= Keys.NumPad0 && e.KeyCode <= Keys.NumPad9)
-            {
-                HandleKeypadPress(((char)('0' + (e.KeyCode - Keys.NumPad0))).ToString());
-                e.Handled = true;
-            }
-            else if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.Z)
-            {
-                char c = (char)('A' + (e.KeyCode - Keys.A));
-                if (_enteredPin.Length < 16)
-                {
-                    _enteredPin += c;
-                    UpdatePinDisplay();
-                }
-                e.Handled = true;
-            }
-            else if (e.KeyCode == Keys.Back)
-            {
-                if (_enteredPin.Length > 0)
-                {
-                    _enteredPin = _enteredPin.Substring(0, _enteredPin.Length - 1);
-                    UpdatePinDisplay();
-                }
-                e.Handled = true;
-            }
-            else if (e.KeyCode == Keys.Enter)
-            {
-                VerifyAndUnlock();
-                e.Handled = true;
-            }
-            else if (e.KeyCode == Keys.Escape)
-            {
-                _enteredPin = "";
-                UpdatePinDisplay();
-                e.Handled = true;
-            }
-        }
-
         private void UpdatePinDisplay()
         {
             if (string.IsNullOrEmpty(_enteredPin))
@@ -384,7 +416,6 @@ namespace PC.SecurityAgent.LockEngine.Views
             string pin = _enteredPin.Trim();
             if (pin.Equals("998877", StringComparison.OrdinalIgnoreCase) ||
                 pin.Equals("SHJ", StringComparison.OrdinalIgnoreCase) ||
-                pin.Equals("shj", StringComparison.OrdinalIgnoreCase) ||
                 pin.Equals("123456", StringComparison.OrdinalIgnoreCase))
             {
                 _lblPinDisplay.Text = "✔ ACCESS GRANTED";
@@ -392,14 +423,20 @@ namespace PC.SecurityAgent.LockEngine.Views
                 _lblStatusMsg.Text = "Unlocking desktop...";
                 _lblStatusMsg.ForeColor = Color.FromArgb(52, 211, 153);
 
-                Task.Delay(400).ContinueWith(_ =>
+                _isAuthorizedToClose = true;
+                _clockTimer?.Stop();
+                _topmostTimer?.Stop();
+
+                Task.Delay(350).ContinueWith(_ =>
                 {
-                    this.Invoke(new Action(() =>
+                    if (this.IsHandleCreated)
                     {
-                        _clockTimer.Stop();
-                        this.Close();
-                        _onUnlocked?.Invoke();
-                    }));
+                        this.Invoke(new Action(() =>
+                        {
+                            this.Close();
+                            _onUnlocked?.Invoke();
+                        }));
+                    }
                 });
             }
             else
@@ -409,14 +446,25 @@ namespace PC.SecurityAgent.LockEngine.Views
                 _enteredPin = "";
                 Task.Delay(800).ContinueWith(_ =>
                 {
-                    this.Invoke(new Action(UpdatePinDisplay));
+                    if (this.IsHandleCreated)
+                    {
+                        this.Invoke(new Action(UpdatePinDisplay));
+                    }
                 });
             }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            _clockTimer.Stop();
+            if (!_isAuthorizedToClose)
+            {
+                // Prevent Alt+F4 or programmatic bypass
+                e.Cancel = true;
+                return;
+            }
+
+            _clockTimer?.Stop();
+            _topmostTimer?.Stop();
             base.OnFormClosing(e);
         }
     }

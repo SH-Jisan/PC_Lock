@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows.Forms;
 using PC.SecurityAgent.LockEngine.Views;
@@ -34,34 +35,38 @@ namespace PC.SecurityAgent.LockEngine
                 _isLocked = true;
             }
 
-            Console.WriteLine("[LockEngine] Activating Hybrid Dual-Plane Custom Lock Engine...");
+            Console.WriteLine("[LockEngine] Activating Topmost Cyber Shield Lock Engine...");
 
-            // 1. Disable Task Manager via registry policy
+            // 1. Enforce system policy (Disable Task Manager, Change Password, Logoff)
             TaskManagerPolicy.DisableTaskManager();
 
-            // 2. Install Low-Level Keyboard Shortcut Shield (Alt+Tab, WinKey, Alt+F4)
-            KeyboardHook.InstallHook();
-
-            // 3. Switch Desktop to PCSecurityDesktop
-            DesktopManager.SwitchToSecurityDesktop();
-
-            // 4. Launch Fullscreen Cyber UI on dedicated STA thread
+            // 2. Launch Fullscreen Cyber UI on dedicated STA UI thread with message pump
             _uiThread = new Thread(() =>
             {
                 try
                 {
-                    DesktopManager.AssignCurrentThreadToSecurityDesktop();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+
                     _activeForm = new LockScreenForm(() =>
                     {
                         HideLockScreen();
                         _externalUnlockCallback?.Invoke();
                     });
 
+                    // 3. Install Keyboard Hook on this exact UI thread so Application.Run message pump drives it!
+                    KeyboardHook.InstallHook();
+
                     Application.Run(_activeForm);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[LockEngine Error] UI thread failure: {ex.Message}");
+                    Console.WriteLine($"[LockEngine Error] UI thread exception: {ex.Message}");
+                    HideLockScreen();
+                }
+                finally
+                {
+                    KeyboardHook.UninstallHook();
                 }
             })
             {
@@ -70,7 +75,7 @@ namespace PC.SecurityAgent.LockEngine
 
             _uiThread.SetApartmentState(ApartmentState.STA);
             _uiThread.Start();
-            Console.WriteLine("[LockEngine] Custom Cyber Lock Screen live and active.");
+            Console.WriteLine("[LockEngine] Topmost Cyber Lock Screen live and active on screen.");
         }
 
         public static void HideLockScreen()
@@ -90,7 +95,7 @@ namespace PC.SecurityAgent.LockEngine
                 {
                     _activeForm.Invoke(new Action(() =>
                     {
-                        _activeForm.Close();
+                        _activeForm.AllowUnlockAndClose();
                     }));
                 }
             }
@@ -100,11 +105,8 @@ namespace PC.SecurityAgent.LockEngine
             // 2. Remove Keyboard Hook
             KeyboardHook.UninstallHook();
 
-            // 3. Re-enable Task Manager
+            // 3. Re-enable Task Manager and System Policies
             TaskManagerPolicy.EnableTaskManager();
-
-            // 4. Restore original Windows Desktop
-            DesktopManager.RestoreOriginalDesktop();
 
             Console.WriteLine("[LockEngine] Desktop restored to normal state.");
         }

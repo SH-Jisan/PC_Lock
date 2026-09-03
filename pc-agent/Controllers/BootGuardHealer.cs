@@ -25,8 +25,16 @@ namespace PC.SecurityAgent.Controllers
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool FindVolumeClose(IntPtr hFindVolume);
 
+        public static bool IsPreBootEnabled { get; set; } = true; // Fully active for production deployment
+
         public static void HealBootConfiguration()
         {
+            if (!IsPreBootEnabled)
+            {
+                Console.WriteLine("[BootGuard Neutralized] Pre-boot firmware stage is temporarily disabled. Zero EFI changes made.");
+                return;
+            }
+
             lock (_lockObj)
             {
                 string? mountedDrive = null;

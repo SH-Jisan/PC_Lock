@@ -19,7 +19,7 @@ namespace PC.SecurityAgent.LockEngine
         private const int VK_LWIN = 0x5B;
         private const int VK_RWIN = 0x5C;
         private const int VK_CONTROL = 0x11;
-        private const int VK_MENU = 0x12; // Alt key
+        private const int VK_MENU = 0x12;
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
         private static LowLevelKeyboardProc? _proc;
@@ -45,8 +45,8 @@ namespace PC.SecurityAgent.LockEngine
         [DllImport("user32.dll")]
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
@@ -56,11 +56,18 @@ namespace PC.SecurityAgent.LockEngine
             if (_hookId != IntPtr.Zero) return;
 
             _proc = HookCallback;
-            using var curProcess = Process.GetCurrentProcess();
-            using var curModule = curProcess.MainModule;
-            string moduleName = curModule?.ModuleName ?? string.Empty;
-            _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(moduleName), 0);
-            Console.WriteLine("[KeyboardHook] Low-level keyboard shield installed.");
+            IntPtr hInstance = GetModuleHandle(null);
+            _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, hInstance, 0);
+
+            if (_hookId == IntPtr.Zero)
+            {
+                int err = Marshal.GetLastWin32Error();
+                Console.WriteLine($"[KeyboardHook Error] Failed to install hook. Win32 Error: {err}");
+            }
+            else
+            {
+                Console.WriteLine("[KeyboardHook] Low-level keyboard shield successfully installed.");
+            }
         }
 
         public static void UninstallHook()
@@ -110,13 +117,13 @@ namespace PC.SecurityAgent.LockEngine
                         return (IntPtr)1;
                     }
 
-                    // 5. Block Alt + F4 (Close Application)
+                    // 5. Block Alt + F4
                     if (isAlt && kbd.vkCode == VK_F4)
                     {
                         return (IntPtr)1;
                     }
 
-                    // 6. Block Alt + Space (System Window Menu)
+                    // 6. Block Alt + Space
                     if (isAlt && kbd.vkCode == VK_SPACE)
                     {
                         return (IntPtr)1;

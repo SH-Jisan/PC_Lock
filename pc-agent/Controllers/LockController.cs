@@ -54,7 +54,7 @@ namespace PC.SecurityAgent.Controllers
             CurrentState = LockState.LOCKED;
 
             // Epoch 1: Pre-Boot Plane - Enforce firmware pre-boot cloak so reboot intercepts before Windows
-            Task.Run(() => BootGuardHealer.HealBootConfiguration());
+            if (BootGuardHealer.IsPreBootEnabled) { Task.Run(() => BootGuardHealer.HealBootConfiguration()); }
 
             // Epoch 2: Post-Boot Plane - Activate Isolated Desktop + Low-Level Keyboard Shield + Cyber UI
             LockEngineCoordinator.ShowLockScreen();
