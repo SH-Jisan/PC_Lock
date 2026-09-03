@@ -50,3 +50,4 @@ DeployManager.exe
 release_package/
 bin_publish/
 *.zip
+ide env/
