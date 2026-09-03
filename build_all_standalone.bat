@@ -14,6 +14,8 @@ echo.
 where dotnet >nul 2>nul
 if %errorlevel% equ 0 (
     set "DOTNET_CMD=dotnet"
+) else if exist "%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe" (
+    set "DOTNET_CMD=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
 ) else if exist "C:\Program Files\dotnet\dotnet.exe" (
     set "DOTNET_CMD=C:\Program Files\dotnet\dotnet.exe"
 ) else if exist "D:\Soft\dotnet\dotnet.exe" (
