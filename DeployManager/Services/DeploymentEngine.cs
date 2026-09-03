@@ -63,6 +63,22 @@ namespace DeployManager.Services
                     return false;
                 }
 
+                // Install agent permanently to C:\Program Files\PCSecuritySystem so USB pendrive can be safely removed
+                string permanentDir = @"C:\Program Files\PCSecuritySystem";
+                string permanentAgentExe = Path.Combine(permanentDir, "PC.SecurityAgent.exe");
+                try
+                {
+                    if (!Directory.Exists(permanentDir)) Directory.CreateDirectory(permanentDir);
+                    if (!string.Equals(agentExe, permanentAgentExe, StringComparison.OrdinalIgnoreCase))
+                    {
+                        File.Copy(agentExe, permanentAgentExe, true);
+                        agentExe = permanentAgentExe;
+                        agentArgs = "";
+                        log("[✔] Copied standalone agent to permanent path: C:\\Program Files\\PCSecuritySystem\\");
+                    }
+                }
+                catch { }
+
                 ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
 
                 // Start agent detached in background
@@ -291,6 +307,13 @@ namespace DeployManager.Services
 
                     Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\PCSecuritySystem", false);
                     log("[✔] Registry configuration keys completely purged.");
+
+                    // Remove permanent installation directory
+                    string permanentDir = @"C:\Program Files\PCSecuritySystem";
+                    if (Directory.Exists(permanentDir))
+                    {
+                        try { Directory.Delete(permanentDir, true); log("[✔] Cleaned permanent C:\\Program Files\\PCSecuritySystem\\ folder."); } catch { }
+                    }
                 }
                 catch { }
                 progress.Report(95);

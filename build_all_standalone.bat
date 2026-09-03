@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 setlocal enabledelayedexpansion
 
 echo ===============================================================================
@@ -10,24 +10,25 @@ echo     without installing .NET 8 SDK, .NET Runtime, or LLVM/Clang!
 echo ===============================================================================
 echo.
 
-:: 1. Locate Dotnet SDK
-where dotnet >nul 2>nul
-if %errorlevel% equ 0 (
-    set "DOTNET_CMD=dotnet"
-) else if exist "%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe" (
-    set "DOTNET_CMD=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
-) else if exist "C:\Program Files\dotnet\dotnet.exe" (
-    set "DOTNET_CMD=C:\Program Files\dotnet\dotnet.exe"
-) else if exist "D:\Soft\dotnet\dotnet.exe" (
+:: 1. Locate Dotnet SDK with actual SDK installed
+set "DOTNET_CMD="
+if exist "D:\Soft\dotnet\dotnet.exe" (
     set "DOTNET_CMD=D:\Soft\dotnet\dotnet.exe"
 ) else (
-    echo [ERROR] .NET 8 SDK was not found on this developer machine.
-    echo [INFO] To compile the standalone binaries, install the SDK once using:
-    echo        winget install Microsoft.DotNet.SDK.8
-    echo.
-    if not defined CI pause
-    exit /b 1
+    for /f "delims=" %%i in ('where dotnet 2^>nul') do (
+        "%%i" --list-sdks 2>nul | findstr /r "[0-9]" >nul
+        if not errorlevel 1 (
+            if not defined DOTNET_CMD set "DOTNET_CMD=%%i"
+        )
+    )
 )
+if not defined DOTNET_CMD (
+    if exist "%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe" set "DOTNET_CMD=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
+)
+if not defined DOTNET_CMD (
+    if exist "C:\Program Files\dotnet\dotnet.exe" set "DOTNET_CMD=C:\Program Files\dotnet\dotnet.exe"
+)
+if not defined DOTNET_CMD set "DOTNET_CMD=dotnet"
 
 echo [1/4] Detected .NET SDK: %DOTNET_CMD%
 echo.
@@ -62,7 +63,7 @@ if exist "%~dp0pc-agent\uninstall_service.bat" copy /y "%~dp0pc-agent\uninstall_
 
 :: Also copy agent to root of dist for immediate 1-click discovery by DeployManager
 copy /y "%DIST_DIR%\Agent\PC.SecurityAgent.exe" "%DIST_DIR%\PC.SecurityAgent.exe" >nul
-echo [✔] Standalone PC.SecurityAgent.exe created successfully.
+echo [OK] Standalone PC.SecurityAgent.exe created successfully.
 echo.
 
 :: 3. Publish Standalone DeployManager (.exe)
@@ -81,7 +82,7 @@ if %errorlevel% neq 0 (
     if not defined CI pause
     exit /b 1
 )
-echo [✔] Standalone DeployManager.exe created successfully.
+echo [OK] Standalone DeployManager.exe created successfully.
 echo.
 
 :: 4. Check for Optional UEFI Pre-boot Binary & Mobile Controller
@@ -89,7 +90,7 @@ echo [4/4] Finalizing Zero-Dependency Distribution Package...
 if exist "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" (
     copy /y "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" "%DIST_DIR%\UEFI\pc_lock_preboot.efi" >nul
     copy /y "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" "%DIST_DIR%\pc_lock_preboot.efi" >nul
-    echo [✔] Bundled pre-compiled UEFI firmware binary: pc_lock_preboot.efi
+    echo [OK] Bundled pre-compiled UEFI firmware binary: pc_lock_preboot.efi
 ) else (
     echo [i] Note: No pre-compiled pc_lock_preboot.efi found.
     echo     Not required if using Enterprise Zero-Risk mode.
@@ -98,7 +99,7 @@ if exist "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" (
 if exist "%~dp0mobile-app\index.html" (
     copy /y "%~dp0mobile-app\index.html" "%DIST_DIR%\MobileController\index.html" >nul
     copy /y "%~dp0mobile-app\manifest.json" "%DIST_DIR%\MobileController\manifest.json" >nul
-    echo [✔] Bundled Mobile Controller Web App.
+    echo [OK] Bundled Mobile Controller Web App.
 )
 
 :: Create Target PC User Guide
@@ -108,17 +109,15 @@ echo   PC SECURITY SYSTEM - CLIENT / TARGET PC RUN GUIDE >> "%GUIDE_FILE%"
 echo =============================================================================== >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
 echo [BANGLA] >> "%GUIDE_FILE%"
-echo এই ফোল্ডারটির ভেতরের সফটওয়্যার চালানোর জন্য অন্য কোনো পিসিতে >> "%GUIDE_FILE%"
-echo .NET 8, LLVM, Clang বা কোনো সফটওয়্যার ইনস্টল করার প্রয়োজন নেই! >> "%GUIDE_FILE%"
+echo Ei folder er shob kisu chalate kono .NET ba Clang lagbe na! >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
-echo কীভাবে চালাবেন: >> "%GUIDE_FILE%"
-echo ১. এই সম্পূর্ণ 'release_package' ফোল্ডারটি পেনড্রাইভ দিয়ে টার্গেট পিসিতে নিন। >> "%GUIDE_FILE%"
-echo ২. DeployManager.exe এর ওপর রাইট ক্লিক করে "Run as administrator" সিলেক্ট করুন। >> "%GUIDE_FILE%"
-echo ৩. স্ক্রিনের "Deploy Enterprise Security" বাটনে ক্লিক করুন। >> "%GUIDE_FILE%"
-echo    ব্যস! ব্যাকগ্রাউন্ডে পিসি সিকিউরিটি ইঞ্জিন স্থায়ীভাবে ইনস্টল ও চালু হয়ে যাবে। >> "%GUIDE_FILE%"
+echo Kivabe chalaben: >> "%GUIDE_FILE%"
+echo 1. Ei release_package folder-ti pendrive diye target PC-te nin. >> "%GUIDE_FILE%"
+echo 2. DeployManager.exe-te Right-click kore "Run as administrator" din. >> "%GUIDE_FILE%"
+echo 3. "Deploy Enterprise Security (Zero Boot Risk)" batone click korun. >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
-echo আনইনস্টল করতে চাইলে: >> "%GUIDE_FILE%"
-echo DeployManager.exe খুলে "Completely Uninstall & Restore" বাটনে ক্লিক করুন। >> "%GUIDE_FILE%"
+echo Uninstall korte chaile: >> "%GUIDE_FILE%"
+echo DeployManager.exe theke "Completely Uninstall & Restore" batone click korun. >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
 echo ------------------------------------------------------------------------------- >> "%GUIDE_FILE%"
 echo [ENGLISH] >> "%GUIDE_FILE%"
@@ -126,26 +125,26 @@ echo Zero dependencies required on target client machines! >> "%GUIDE_FILE%"
 echo All .NET Core libraries and runtimes are embedded inside the standalone binaries. >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
 echo Quick Start: >> "%GUIDE_FILE%"
-echo 1. Copy this 'release_package' folder to the target Windows 10/11 workstation. >> "%GUIDE_FILE%"
-echo 2. Right-click 'DeployManager.exe' and click 'Run as administrator'. >> "%GUIDE_FILE%"
-echo 3. Click 'Deploy Enterprise Security (Zero Boot Risk)'. >> "%GUIDE_FILE%"
+echo 1. Copy this release_package folder to the target Windows 10/11 workstation. >> "%GUIDE_FILE%"
+echo 2. Right-click DeployManager.exe and click Run as administrator. >> "%GUIDE_FILE%"
+echo 3. Click Deploy Enterprise Security (Zero Boot Risk). >> "%GUIDE_FILE%"
 echo( >> "%GUIDE_FILE%"
 echo =============================================================================== >> "%GUIDE_FILE%"
 
 echo.
 echo ===============================================================================
-echo  🎉 [ALL DONE] Zero-Dependency Release Package Ready!
+echo  [ALL DONE] Zero-Dependency Release Package Ready!
 echo ===============================================================================
 echo  Package Location: %DIST_DIR%
 echo.
 echo  Contents:
-echo   • DeployManager.exe     (Standalone GUI Hub - Zero .NET required)
-echo   • PC.SecurityAgent.exe  (Standalone Background Guard - Zero .NET required)
-echo   • Agent\                (Service scripts and standalone agent backup)
-echo   • UEFI\                 (Pre-compiled EFI binary, if built)
-echo   • MobileController\     (Web-based mobile control client)
-echo   • HOW_TO_RUN_ON_CLIENT_PC.txt
+echo   - DeployManager.exe     (Standalone GUI Hub - Zero .NET required)
+echo   - PC.SecurityAgent.exe  (Standalone Background Guard - Zero .NET required)
+echo   - Agent\                (Service scripts and standalone agent backup)
+echo   - UEFI\                 (Pre-compiled EFI binary, if built)
+echo   - MobileController\     (Web-based mobile control client)
+echo   - HOW_TO_RUN_ON_CLIENT_PC.txt
 echo.
-echo  You can now copy the 'release_package' folder to ANY other PC and run directly!
+echo  You can now copy the release_package folder to ANY other PC and run directly!
 echo ===============================================================================
 if not defined CI pause
