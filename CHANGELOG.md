@@ -1,0 +1,115 @@
+# 📋 PC Lock - Comprehensive Changelog & Architecture Evolution (CHANGELOG.md)
+
+All notable changes, architectural decisions, and feature additions to the **PC Lock (PC Security System)** will be documented in this file.
+
+### 💡 Format & Guiding Principles
+For every modification or addition, this log records:
+1. **What was changed / added (কী পরিবর্তন করা হয়েছে)**: Technical breakdown of the new feature or patch.
+2. **Why it was done (কেন করা হয়েছে)**: The architectural rationale, problem statement, or operational benefit.
+3. **Affected Files & Subsystems**: Direct clickable references to modified components.
+4. **Impact & Security Implication**: Operational safety, dependencies, and performance considerations.
+
+---
+
+## 🚀 Active Feature Inventory (Current System State - v1.1.0)
+
+| Subsystem | Key Components | Technical Implementation |
+| :--- | :--- | :--- |
+| **Custom Cyber Lock Engine** | Isolated Desktop, Global Keyboard Hook, TaskMgr Policy, Topmost Cyber UI | Win32 `CreateDesktop` (`PC_LOCK_SECURE_DESKTOP`), `WH_KEYBOARD_LL` low-level hook blocking Win/Alt+Tab/Alt+F4, Registry `DisableTaskMgr=1`, Dark Theme Fullscreen WinForms with QR code and touch keypad. |
+| **Zero-Dependency Deployment** | Standalone Single-File `.exe`, Dynamic Discovery, Permanent Install | .NET 8 `--self-contained true -p:PublishSingleFile=true`, dynamic path resolution (`ResolveSecurityAgent`), automatic copy to `C:\Program Files\PCSecuritySystem\` for safe USB pendrive removal. |
+| **Safe Diagnostic Harness** | Firmware-Neutral Test Script | `test_lock_engine.bat` with `--test-lock` flag; neutralizes `BootGuardHealer` to allow safe desktop UI & keyboard shield testing without touching UEFI or rebooting. |
+| **PC Security Agent & Watchdog** | Windows Background Service, Winlogon Provider, TPM / DPAPI | Administrative watchdog service, auto-restart on termination, native C++ `WinlogonProvider.cpp` credential provider tile, DPAPI/TPM hardware secret store. |
+| **Cloud Security Gateway** | WebSocket & REST Relay, Database, Cryptographic Verification | Node.js/TypeScript gateway, Supabase/PostgreSQL schema, Ed25519 digital signature validation, HMAC token authentication, live heartbeat status (`ONLINE`, `LOCKED`, `OFFLINE`). |
+| **Mobile Controllers** | PWA Web Controller, Native Android App | Responsive dark cyber web app with camera QR scanner, Android Studio project with BiometricPrompt (fingerprint/face unlock) and real-time remote commands. |
+| **Firmware Pre-Boot Interception** | Bare-Metal UEFI `.efi`, Micro-Core Chainloader, ACPI WPBT | Clang-compiled 64-bit EFI binary (`pc_lock_preboot.efi`) intercepting boot chain before `bootmgfw.efi`, ACPI WPBT persistence kit. |
+| **Automated CI/CD Pipeline** | GitHub Actions Workflow | `.github/workflows/release.yml` triggers on version tags (`v*`) or manual dispatch, compiles standalone binaries on Windows Server runner, and publishes `.zip` to GitHub Releases. |
+
+---
+
+## 📜 Detailed Change History & Evolution Log
+
+### [v1.1.0] - 2026-09-03 to 2026-09-06
+
+#### 1. Hybrid Dual-Plane Custom Cyber Lock Engine
+* **Files**: 
+  - [`pc-agent/LockEngine/DesktopManager.cs`](file:///F:/PC_Lock/pc-agent/LockEngine/DesktopManager.cs)
+  - [`pc-agent/LockEngine/KeyboardHook.cs`](file:///F:/PC_Lock/pc-agent/LockEngine/KeyboardHook.cs)
+  - [`pc-agent/LockEngine/TaskManagerPolicy.cs`](file:///F:/PC_Lock/pc-agent/LockEngine/TaskManagerPolicy.cs)
+  - [`pc-agent/LockEngine/Views/LockScreenForm.cs`](file:///F:/PC_Lock/pc-agent/LockEngine/Views/LockScreenForm.cs)
+  - [`pc-agent/LockEngine/LockEngineCoordinator.cs`](file:///F:/PC_Lock/pc-agent/LockEngine/LockEngineCoordinator.cs)
+* **What was added / changed (কী করা হয়েছে)**:
+  - তৈরি করা হয়েছে নিজস্ব ডার্ক সাইবার লক স্ক্রিন UI যাতে রয়েছে লাইভ ডিজিটাল ঘড়ি, তারিখ, ভার্চুয়াল কিপ্যাড, কিবোর্ড পিন ইনপুট, মোবাইল আনলকের জন্য ডাইনামিক QR কোড এবং মাস্টার পিন (`998877`, `SHJ`, `123456`) সাপোর্ট।
+  - `DesktopManager.cs` দিয়ে Win32 আইসোলেটেড ডেস্কটপ (`PC_LOCK_SECURE_DESKTOP`) চালু করা হয়েছে।
+  - `KeyboardHook.cs` দিয়ে গ্লোবাল `WH_KEYBOARD_LL` হুক যুক্ত করে Windows Key, Alt+Tab, Alt+Esc, Ctrl+Esc, Ctrl+Shift+Esc এবং Alt+F4 সম্পূর্ণরূপে ব্লক করা হয়েছে।
+  - `TaskManagerPolicy.cs` দিয়ে রেজিস্ট্রি পলিসি প্রয়োগ করে টাস্ক ম্যানেজার ডিজেবল (`DisableTaskMgr = 1`) করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - সাধারণ উইন্ডোজ লক স্ক্রিন (`LockWorkStation`) অনেক ক্ষেত্রে ব্যবহারকারীকে পর্যাপ্ত ভিজ্যুয়াল ব্রান্ডিং বা ডাইনামিক কিউআর কোড স্ক্যান সুবিধা দেয় না এবং ক্যাফে/ল্যাব এনভায়রনমেন্টে বিভিন্ন থার্ড-পার্টি অ্যাপ স্ক্রিন দখল করতে পারে। নিজস্ব আইসোলেটেড ডেস্কটপ এবং লো-লেভেল কিবোর্ড ইন্টারসেপশন উইন্ডোজের যেকোনো বাইপাস টেকনিককে সম্পূর্ণরূপে প্রতিহত করে।
+
+---
+
+#### 2. Safe Desktop Lock Testing Harness
+* **Files**:
+  - [`test_lock_engine.bat`](file:///F:/PC_Lock/test_lock_engine.bat)
+  - [`pc-agent/Program.cs`](file:///F:/PC_Lock/pc-agent/Program.cs)
+  - [`pc-agent/Controllers/BootGuardHealer.cs`](file:///F:/PC_Lock/pc-agent/Controllers/BootGuardHealer.cs)
+* **What was added / changed (কী করা হয়েছে)**:
+  - `Program.cs`-এ `--test-lock` কমান্ড-লাইন ফ্ল্যাগ যুক্ত করা হয়েছে।
+  - রুটে ১-ক্লিকে রানযোগ্য `test_lock_engine.bat` স্ক্রিপ্ট তৈরি করা হয়েছে।
+  - টেস্ট মোড চালু থাকলে `BootGuardHealer.IsPreBootEnabled = false` করে রাখা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - ডেভেলপার ও অ্যাডমিনরা যেন ফার্মওয়্যারে (UEFI/EFI) কোনো পরিবর্তন না এনে এবং পিসি রিবুট বা ব্রিকিং ঝুঁকি ছাড়া সরাসরি চলমান উইন্ডোজ ডেস্কটপে লক স্ক্রিনের UI, ভার্চুয়াল কিপ্যাড, কিবোর্ড শিল্ড এবং মাস্টার পিন পরীক্ষা করতে পারেন।
+
+---
+
+#### 3. Permanent Program Files Installation & Safe USB Removal
+* **Files**:
+  - [`DeployManager/Services/DeploymentEngine.cs`](file:///F:/PC_Lock/DeployManager/Services/DeploymentEngine.cs)
+* **What was added / changed (কী করা হয়েছে)**:
+  - পেনড্রাইভ বা এক্সটার্নাল ড্রাইভ থেকে `DeployManager.exe` রান করে ডিপ্লয় করার সময় `PC.SecurityAgent.exe`-কে স্বয়ংক্রিয়ভাবে `C:\Program Files\PCSecuritySystem\` ফোল্ডারে কপি করার লজিক যুক্ত করা হয়েছে।
+  - ডিপ্লয়ারের আনইন্সটল রুটিনে এই ডিরেক্টরি এবং সংশ্লিষ্ট রেজিস্ট্রি কি সম্পূর্ণ মুছে ফেলার লজিক যোগ করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - পূর্বে পেনড্রাইভ থেকে ডিপ্লয় করার পর পেনড্রাইভ খুলে ফেললে ব্যাকগ্রাউন্ড এজেন্ট ফাইল না পেয়ে ক্র্যাশ করত। পার্মানেন্ট ডিরেক্টরিতে সেলফ-কপি হওয়ায় ডিপ্লয় শেষেই **পেনড্রাইভ নিরাপদে খুলে নেওয়া সম্ভব**।
+
+---
+
+#### 4. Zero-Dependency Standalone Compilation & Dynamic Agent Resolution
+* **Files**:
+  - [`build_all_standalone.bat`](file:///F:/PC_Lock/build_all_standalone.bat)
+  - [`DeployManager/Services/DeploymentEngine.cs`](file:///F:/PC_Lock/DeployManager/Services/DeploymentEngine.cs)
+  - [`DeployManager/publish_single_file.bat`](file:///F:/PC_Lock/DeployManager/publish_single_file.bat)
+  - [`pc-agent/publish_single_file.bat`](file:///F:/PC_Lock/pc-agent/publish_single_file.bat)
+  - [`.gitignore`](file:///F:/PC_Lock/.gitignore)
+* **What was added / changed (কী করা হয়েছে)**:
+  - `build_all_standalone.bat`-এ .NET 8-এর `--self-contained true -p:PublishSingleFile=true` ফ্ল্যাগ ব্যবহার করে সিঙ্গেল-ফাইল বাইনারি বিল্ড করা হয়েছে।
+  - ডিপ্লয়মেন্ট ইঞ্জিনে থাকা হার্ডকোডেড `D:\Soft\dotnet\dotnet.exe` পাথ অপসারণ করে `ResolveSecurityAgent()` এবং `FindPrebootEfiBinary()` মেথডের মাধ্যমে রানটাইমে স্বয়ংক্রিয়ভাবে বাইনারি সনাক্তকরণের ব্যবস্থা করা হয়েছে।
+  - `.gitignore`-এ `release_package/`, `bin_publish/`, এবং `*.zip` যোগ করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - ক্লায়েন্ট বা টার্গেট পিসিতে .NET 8 SDK, Runtime বা LLVM/Clang কিছুই ইনস্টল থাকার প্রয়োজন নেই। যেকোনো স্ট্যান্ডার্ড উইন্ডোজ ১০/১১ পিসিতে কোনো প্রি-রিকুইজিট ছাড়া সফটওয়্যারটি সরাসরি চলবে।
+
+---
+
+#### 5. Automated CI/CD GitHub Actions Release Pipeline
+* **Files**:
+  - [`.github/workflows/release.yml`](file:///F:/PC_Lock/.github/workflows/release.yml)
+* **What was added / changed (কী করা হয়েছে)**:
+  - একটি অটোমেটেড GitHub Actions ওয়ার্কফ্লো তৈরি করা হয়েছে যা নতুন কোনো ভার্সন ট্যাগ (যেমন `v1.1.0`) পুশ করলে স্বয়ংক্রিয়ভাবে উইন্ডোজ রানারে .NET 8 ও LLVM সেটআপ করে `build_all_standalone.bat` এক্সিকিউট করে সম্পূর্ণ প্যাকেজটি ZIP ফাইল আকারে GitHub Releases-এ আপলোড করে দেয়।
+  - বিল্ড স্ক্রিপ্ট ও ডিপ্লয়মেন্ট ইঞ্জিনে হেডলেস CI ডেডলক পরিহারের জন্য `if not defined CI pause` এবং ক্র্যাশ গার্ড যোগ করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - ম্যানুয়াল বিল্ড ও লোকাল জিপ তৈরির ঝামেলা দূর করে ক্লাউড থেকে সরাসরি প্রোডাকশন-রেডি রিলিজ ফাইল ডাউনলোডযোগ্য করা।
+
+---
+
+### [v1.0.0] - Initial Enterprise Architecture
+
+* **Files**:
+  - [`uefi-preboot/src/efi_main.c`](file:///F:/PC_Lock/uefi-preboot/src/efi_main.c) (UEFI Pre-Boot EFI)
+  - [`acpi-wpbt/`](file:///F:/PC_Lock/acpi-wpbt) (ACPI WPBT Persistence)
+  - [`pc-agent/Services/SecurityService.cs`](file:///F:/PC_Lock/pc-agent/Services/SecurityService.cs) (Windows Background Service)
+  - [`pc-agent/CredentialProvider/WinlogonProvider.cpp`](file:///F:/PC_Lock/pc-agent/CredentialProvider/WinlogonProvider.cpp) (Native C++ Logon Tile)
+  - [`backend/src/index.ts`](file:///F:/PC_Lock/backend/src/index.ts) (Cloud WebSocket Relay Hub)
+  - [`mobile-app/index.html`](file:///F:/PC_Lock/mobile-app/index.html) (PWA Controller)
+  - [`android-app/`](file:///F:/PC_Lock/android-app) (Native Android Application)
+* **What was added / changed (কী করা হয়েছে)**:
+  - মাল্টি-লেয়ার সিকিউরিটি আর্কিটেকচার প্রতিষ্ঠা: বেয়ার-মেটাল ফার্মওয়্যার লেভেল থেকে ক্লাউড রিলে এবং মোবাইল অ্যাপ পর্যন্ত সম্পূর্ণ সিস্টেম ডিজাইন ও ইমপ্লিমেন্টেশন।
+* **Why it was done (কেন করা হয়েছে)**:
+  - সাইবার ক্যাফে ও ল্যাব ওয়ার্কস্টেশনে হার্ডডিস্ক ফরম্যাট বা উইন্ডোজ রিস্টার্টেও টিকে থাকার মতো সর্বোচ্চ স্তরের নিরাপত্তা নিশ্চিত করা।
