@@ -76,6 +76,20 @@ namespace DeployManager.Services
                         agentArgs = "";
                         log("[✔] Copied standalone agent to permanent path: C:\\Program Files\\PCSecuritySystem\\");
                     }
+
+                    // Perform pre-flight hardware audit and save persistent profile
+                    try
+                    {
+                        var audit = HardwareAuditService.RunAudit();
+                        string auditJson = audit.ToJson(true);
+                        File.WriteAllText(Path.Combine(permanentDir, "hardware_audit.json"), auditJson);
+                        log($"[✔] Workstation Hardware Profile: {audit.Motherboard.Manufacturer} {audit.Motherboard.Product} [MAC: {audit.Network.PrimaryMacAddress}]");
+                        log("[✔] Saved hardware audit profile: C:\\Program Files\\PCSecuritySystem\\hardware_audit.json");
+                    }
+                    catch (Exception aEx)
+                    {
+                        log($"[!] Hardware profile note: {aEx.Message}");
+                    }
                 }
                 catch { }
 

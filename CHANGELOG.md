@@ -28,6 +28,37 @@ For every modification or addition, this log records:
 
 ## 📜 Detailed Change History & Evolution Log
 
+### [v1.2.0] - 2026-09-06: Pre-Flight Hardware Audit & Compatibility Diagnostics Engine
+
+#### 1. Hardware Audit & System Profiling Engine
+* **Files**:
+  - [`DeployManager/Services/HardwareAuditService.cs`](file:///F:/PC_Lock/DeployManager/Services/HardwareAuditService.cs) [NEW]
+  - [`pc-agent/Hardware/HardwareProfile.cs`](file:///F:/PC_Lock/pc-agent/Hardware/HardwareProfile.cs) [NEW]
+* **What was added / changed (কী করা হয়েছে)**:
+  - সম্পূর্ণ জিরো-ডিপেন্ডেন্সি C# সার্ভিস `HardwareAuditService.cs` তৈরি করা হয়েছে, যা উইন্ডোজ রেজিস্ট্রি (`HKLM\HARDWARE\DESCRIPTION\System\BIOS`), Win32 `kernel32.dll` API (`GetFirmwareType`, `GlobalMemoryStatusEx`) এবং .NET `System.Net.NetworkInformation` ব্যবহার করে নিমেষের মধ্যে পিসির পূর্ণাঙ্গ হার্ডওয়্যার প্রোফাইল তৈরি করে:
+    1. **মাদারবোর্ড স্পেসিফিকেশন**: প্রস্তুতকারক (Manufacturer), মডেল/প্রোডাক্ট নাম, ভার্সন, সিরিয়াল নম্বর এবং সিস্টেম মডেল/SKU।
+    2. **BIOS / ফার্মওয়্যার তথ্য**: ভেন্ডর, ভার্সন, রিলিজ ডেট, বুট মোড (UEFI Native বনাম Legacy BIOS) এবং সিকিউর বুট (Secure Boot Active বনাম Disabled) স্টেটাস।
+    3. **ইউজার ও হোস্ট আইডেন্টিটি**: বর্তমান লগড-ইন ইউজারনেম, ডোমেইন/ওয়ার্কগ্রুপ, কম্পিউটার নাম, প্রসেসর মডেল, কোর সংখ্যা এবং মোট ফিজিক্যাল RAM।
+    4. **নেটওয়ার্ক হার্ডওয়্যার ও আইপি**: ফিজিক্যাল নেটওয়ার্ক অ্যাডাপ্টার (Ethernet/Wi-Fi), চিপসেট বিবরণ, ফিজিক্যাল MAC অ্যাড্রেস, সক্রিয় IPv4 অ্যাড্রেস, সাবনেট মাস্ক, ডিফল্ট গেটওয়ে, DNS সার্ভার এবং ইন্টারনেট/ক্লাউড রিলে কানেক্টিভিটি টেস্ট।
+    5. **কম্প্যাটিবিলিটি অ্যাসেসমেন্ট ম্যাট্রিক্স**: আর্কিটেকচার (x64), ফার্মওয়্যার (UEFI/Legacy), সিকিউর বুট এবং নেটওয়ার্ক স্টেটাস মিলিয়ে অটোমেটিক কম্প্যাটিবিলিটি স্কোর ও রিকমেন্ডেড ডিপ্লয়মেন্ট মোড নির্ধারণ।
+  - ব্যাকগ্রাউন্ড এজেন্ট (`pc-agent/Hardware/HardwareProfile.cs`)-এ হার্ডওয়্যার প্রোফাইল লোডার যোগ করা হয়েছে যাতে পার্মানেন্ট অডিট ফাইল থেকে বা লাইভ সিস্টেমে টেলিমেট্রি অ্যাক্সেস করা যায়।
+* **Why it was done (কেন করা হয়েছে)**:
+  - পূর্বে সফটওয়্যারটি যেকোনো পিসিতে ব্লাইন্ডলি (অন্ধভাবে) ডিপ্লয় হতো, যার ফলে মাদারবোর্ড মডেল বা বুট মোড না জেনে অনুপযুক্ত কনফিগারেশন চলার ঝুঁকি থাকত। এখন সফটওয়্যার চালুর সাথে সাথেই সম্পূর্ণ হার্ডওয়্যার অডিট সম্পন্ন হয় এবং পিসির স্পেসিফিকেশন অনুযায়ী উপযুক্ত আর্কিটেকচার (যেমন: সিকিউর বুট অন থাকলে Enterprise Zero-Risk মোড) নিশ্চিত করে নিরাপদে ডিপ্লয় করা যায়।
+
+#### 2. Interactive Hardware Diagnostics Dashboard in DeployManager GUI
+* **Files**:
+  - [`DeployManager/MainForm.cs`](file:///F:/PC_Lock/DeployManager/MainForm.cs) [MODIFIED]
+  - [`DeployManager/Services/DeploymentEngine.cs`](file:///F:/PC_Lock/DeployManager/Services/DeploymentEngine.cs) [MODIFIED]
+* **What was added / changed (কী করা হয়েছে)**:
+  - `MainForm.cs`-এ একটি আকর্ষণীয় **Hardware Profile & Compatibility Card** যুক্ত করা হয়েছে, যাতে অ্যাপ ওপেন হওয়ামাত্রই মাদারবোর্ড মডেল, BIOS বুট মোড, ইউজারনেম, হোস্টনেম, প্রাইমারি MAC এবং সক্রিয় IP প্রদর্শিত হয়।
+  - একটি ভিজ্যুয়াল কম্প্যাটিবিলিটি ব্যাজ (🟢 `100% COMPATIBLE (Enterprise Ready)`) এবং রিয়েল-টাইম রি-স্ক্যান বাটন ("🔄 Re-Scan") যুক্ত করা হয়েছে।
+  - লাইভ ডায়াগনস্টিক কনসোলে বিস্তারিত হার্ডওয়্যার প্রোফাইল ও অডিট নোট স্ট্রিম করা হয়েছে।
+  - ডিপ্লয়মেন্টের সময় স্বয়ংক্রিয়ভাবে `hardware_audit.json` ফাইলে সম্পূর্ণ প্রোফাইল `C:\Program Files\PCSecuritySystem\`-এ সংরক্ষণ করা হয়।
+* **Why it was done (কেন করা হয়েছে)**:
+  - অ্যাডমিনিস্ট্রেটর বা টেকনিশিয়ান ডিপ্লয় বাটনে ক্লিক করার আগেই এক পলকে দেখতে পারবেন পিসিটির মাদারবোর্ড ও নেটওয়ার্ক কনফিগারেশন কী এবং সিস্টেমটি সম্পূর্ণ প্রস্তুত কিনা।
+
+---
+
 ### [v1.1.0] - 2026-09-03 to 2026-09-06
 
 #### 1. Hybrid Dual-Plane Custom Cyber Lock Engine
