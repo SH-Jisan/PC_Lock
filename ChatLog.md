@@ -4618,3 +4618,67 @@ git e push koro
 - রিমোট `origin/development` ব্রাঞ্চে পুশ করার প্রক্রিয়া সম্পন্ন করা হয়েছে।
 
 ---
+
+## Turn 18 (acc-2)
+
+### User:
+```text
+analyze the project a to z
+```
+
+### Antigravity Assistant:
+**প্রজেক্টের এ টু জেড আর্কিটেকচার অ্যানালাইসিস:**
+- সম্পূর্ণ রিপোজিটরির (DeployManager, pc-agent, uefi-preboot, acpi-wpbt, backend, mobile-app, android-app) আর্কিটেকচার, ফাইল স্ট্রাকচার, ডিপ্লয়মেন্ট মেকানিজম এবং অপারেশনাল ফ্লো পুঙ্খানুপুঙ্খ বিশ্লেষণ করে ব্যবহারকারীকে রিপোর্ট প্রদান করা হয়েছে।
+
+---
+
+## Turn 19 (acc-2)
+
+### User:
+```text
+software ta install korte hole ki korte hobe?
+```
+
+### Antigravity Assistant:
+**ইনস্টলেশন ও ডিপ্লয়মেন্ট গাইড:**
+- সফটওয়্যার ইনস্টল ও চালুর ৩টি সহজ উপায় (DeployManager GUI ব্যবহার, স্ক্রিপ্টের মাধ্যমে সার্ভিস ইনস্টল, এবং বিল্ড স্ক্রিপ্ট) বিস্তারিত বুঝিয়ে দেওয়া হয়েছে।
+
+---
+
+## Turn 20 (acc-2)
+
+### User:
+```text
+DeployManager.exe kothai?
+```
+
+### Antigravity Assistant:
+**DeployManager বাইনারি লোকেশন গাইড:**
+- প্রোডাকশন রেডি বাইনারি `H:\PC_Lock\release_package\DeployManager.exe` এবং ডেভেলপমেন্ট বিল্ড `H:\PC_Lock\DeployManager\bin\Release\net8.0-windows\win-x64\DeployManager.exe`-এর পাথ ও `build_all_standalone.bat` রান করার নিয়ম বুঝিয়ে দেওয়া হয়েছে।
+
+---
+
+## Turn 21 (acc-2)
+
+### User:
+```text
+eykhane pc er hardware detect korar je logic and funtion segula aro strong koro. pc er motherboard, bios, efi, driver, network hardware etc full scan korbe. also pre boot stage er jnnno amader je je extra jinish lagbe jemon network driver, graphic driver etc aro ja ja dorkari segula kothai ache segula o detect korbe.
+```
+
+### Antigravity Assistant:
+**ডিপ হার্ডওয়্যার, কার্নেল ড্রাইভার ও প্রি-বুট অ্যাসেটস স্ক্যানার বাস্তবায়ন:**
+1. [`DeployManager/Services/HardwareAuditService.cs`](file:///h:/PC_Lock/DeployManager/Services/HardwareAuditService.cs):
+   - জিরো-ডিপেন্ডেন্সি রেজিস্ট্রি স্ক্যানার (`HKLM\SYSTEM\CurrentControlSet\Control\Class\...` এবং `HKLM\SYSTEM\CurrentControlSet\Enum\PCI\...`) ইমপ্লিমেন্ট করা হয়েছে।
+   - **গ্রাফিক্স ও GOP**: সক্রিয় GPU (যেমন: Intel UHD 630), এর কার্নেল ড্রাইভার (`igdkmd64.sys`), ড্রাইভার ভার্সন, ভেন্ডর এবং UEFI GOP স্ট্যাটাস ডিটেকশন।
+   - **নেটওয়ার্ক ও প্রি-বুট ROM**: ফিজিক্যাল NIC, PCI আইডি, কার্নেল ড্রাইভার (`rt68cx21x64.sys`), এবং UEFI UNDI/SNP ROM ক্যাপাবিলিটি ভেরিফিকেশন।
+   - **স্টোরেজ ও কন্ট্রোলার**: স্টোরেজ বাস (NVMe বনাম SATA AHCI), কন্ট্রোলার কার্নেল ড্রাইভার (`stornvme.sys`), ডিস্ক মডেল এবং পার্টিশন স্টাইল (GPT বনাম MBR)।
+   - **EFI প্রি-বুট বুটলোডার**: ভলিউম ডিভাইস পাথ (`\\?\Volume{GUID}\`) স্ক্যান করে মাউন্ট লেটার ছাড়াও EFI পার্টিশন সনাক্তকরণ এবং `bootmgfw.efi`, `bootmgfw_hidden.efi`, ও `bootx64.efi`-এর সঠিক পাথ যাচাইকরণ।
+   - **প্রি-বুট স্কোরিং**: সমস্ত প্রি-রিকুইজিট মিলিয়ে ০-১০০% স্কোর ও রিকমেন্ডেশন তৈরি।
+2. [`DeployManager/MainForm.cs`](file:///h:/PC_Lock/DeployManager/MainForm.cs):
+   - হার্ডওয়্যার ডায়াগনস্টিক কার্ড ৮৬০x৭৮০ উইন্ডোর সাথে সামঞ্জস্য রেখে ৮৫৫x২০৫ পিক্সেলে বড় করা হয়েছে।
+   - ৪টি নতুন সুনির্দিষ্ট ডায়াগনস্টিক ফিল্ড এবং লাইভ কনসোলে ড্রাইভ ফাইল পাথ ও প্রি-বুট ডায়াগনস্টিক চেকলিস্ট রেন্ডারিং যোগ করা হয়েছে।
+3. [`pc-agent/Hardware/HardwareProfile.cs`](file:///h:/PC_Lock/pc-agent/Hardware/HardwareProfile.cs):
+   - ব্যাকগ্রাউন্ড সিকিউরিটি এজেন্টে নতুন গ্রাফিক্স, স্টোরেজ, নেটওয়ার্ক ড্রাইভার ও EFI প্রোপার্টি যুক্ত করা হয়েছে।
+4. বিল্ড ও ভ্যালিডেশন:
+   - `build_all_standalone.bat` সম্পূর্ণ সফলভাবে রান করে `release_package\DeployManager.exe` এবং `release_package\PC.SecurityAgent.exe` নতুন ফিচারের সাথে একক স্ট্যান্ডঅ্যালোন হিসেবে প্যাকেজিং সম্পন্ন হয়েছে।
+

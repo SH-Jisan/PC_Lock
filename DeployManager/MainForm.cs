@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DeployManager.Services;
@@ -15,11 +16,14 @@ namespace DeployManager
         private Button _btnRescanHardware = null!;
         private Label _lblStatus = null!;
 
-        // Hardware Profile UI Controls
+        // Hardware & Pre-Boot Driver Diagnostic UI Labels
         private Label _lblHwMotherboard = null!;
         private Label _lblHwBios = null!;
+        private Label _lblHwGpu = null!;
         private Label _lblHwUser = null!;
         private Label _lblHwNetwork = null!;
+        private Label _lblHwStorage = null!;
+        private Label _lblHwEfi = null!;
         private Label _lblCompatibilityBadge = null!;
         private HardwareAuditReport? _latestAuditReport;
 
@@ -31,8 +35,8 @@ namespace DeployManager
 
         private void InitializeComponent()
         {
-            this.Text = "PC Security & Remote Lock Controller - Deployment & Hardware Diagnostic Hub";
-            this.Size = new Size(820, 680);
+            this.Text = "PC Security System - Enterprise Deployment & Deep Hardware / Driver Diagnostic Hub";
+            this.Size = new Size(860, 780);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -60,7 +64,7 @@ namespace DeployManager
 
             var lblSubtitle = new Label
             {
-                Text = "Intelligent Pre-Flight Hardware Profiling • Motherboard, BIOS & Network Compatibility Engine",
+                Text = "Deep Hardware, Display & Network Driver Diagnostic Engine • UEFI GOP, UNDI/SNP & ESP Pre-Boot Scanner",
                 Font = new Font("Segoe UI", 9f),
                 ForeColor = Color.FromArgb(148, 163, 184), // Slate 400
                 AutoSize = true,
@@ -71,18 +75,18 @@ namespace DeployManager
             pnlHeader.Controls.Add(lblSubtitle);
             this.Controls.Add(pnlHeader);
 
-            // 2. Hardware Audit & Compatibility Dashboard Card
+            // 2. Hardware Audit & Pre-Boot Driver Dashboard Card
             var pnlHardwareCard = new Panel
             {
                 Location = new Point(20, 95),
-                Size = new Size(765, 140),
+                Size = new Size(805, 205),
                 BackColor = Color.FromArgb(24, 33, 47), // Slate 850
                 BorderStyle = BorderStyle.FixedSingle
             };
 
             var lblCardTitle = new Label
             {
-                Text = "🖥️ Workstation Hardware & Firmware Environment Profile",
+                Text = "🖥️ Workstation Hardware, Kernel Drivers & Pre-Boot Readiness Profile",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(226, 232, 240),
                 Location = new Point(12, 10),
@@ -93,7 +97,7 @@ namespace DeployManager
             _btnRescanHardware = new Button
             {
                 Text = "🔄 Re-Scan",
-                Location = new Point(660, 8),
+                Location = new Point(700, 8),
                 Size = new Size(92, 28),
                 BackColor = Color.FromArgb(51, 65, 85),
                 ForeColor = Color.FromArgb(241, 245, 249),
@@ -105,14 +109,14 @@ namespace DeployManager
             _btnRescanHardware.Click += async (s, e) => await PerformHardwareScanAsync();
             pnlHardwareCard.Controls.Add(_btnRescanHardware);
 
-            // Column 1: Motherboard & BIOS
+            // Column 1: Motherboard, BIOS, GPU, User (Left column: X=12)
             _lblHwMotherboard = new Label
             {
                 Text = "• Motherboard: Scanning hardware...",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(203, 213, 225),
                 Location = new Point(12, 38),
-                Size = new Size(390, 20)
+                Size = new Size(385, 20)
             };
             pnlHardwareCard.Controls.Add(_lblHwMotherboard);
 
@@ -121,48 +125,78 @@ namespace DeployManager
                 Text = "• BIOS/Firmware: Detecting boot mode & Secure Boot...",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(203, 213, 225),
-                Location = new Point(12, 62),
-                Size = new Size(390, 20)
+                Location = new Point(12, 60),
+                Size = new Size(385, 20)
             };
             pnlHardwareCard.Controls.Add(_lblHwBios);
+
+            _lblHwGpu = new Label
+            {
+                Text = "• Graphics / GOP: Auditing Display adapter & driver...",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Color.FromArgb(203, 213, 225),
+                Location = new Point(12, 82),
+                Size = new Size(385, 20)
+            };
+            pnlHardwareCard.Controls.Add(_lblHwGpu);
 
             _lblHwUser = new Label
             {
                 Text = "• Operator/Host: Detecting current logged-in user...",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(203, 213, 225),
-                Location = new Point(12, 86),
-                Size = new Size(390, 20)
+                Location = new Point(12, 104),
+                Size = new Size(385, 20)
             };
             pnlHardwareCard.Controls.Add(_lblHwUser);
 
-            // Column 2: Network & Compatibility
+            // Column 2: Network, Storage, EFI Pre-Boot, Compatibility (Right column: X=405)
             _lblHwNetwork = new Label
             {
                 Text = "• Network: Auditing MAC & IP addresses...",
                 Font = new Font("Segoe UI", 8.5f),
                 ForeColor = Color.FromArgb(203, 213, 225),
-                Location = new Point(410, 38),
-                Size = new Size(345, 42)
+                Location = new Point(405, 38),
+                Size = new Size(390, 20)
             };
             pnlHardwareCard.Controls.Add(_lblHwNetwork);
 
+            _lblHwStorage = new Label
+            {
+                Text = "• Storage: Detecting NVMe/AHCI & partition style...",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Color.FromArgb(203, 213, 225),
+                Location = new Point(405, 60),
+                Size = new Size(390, 20)
+            };
+            pnlHardwareCard.Controls.Add(_lblHwStorage);
+
+            _lblHwEfi = new Label
+            {
+                Text = "• EFI Pre-Boot: Inspecting ESP volume & bootloaders...",
+                Font = new Font("Segoe UI", 8.5f),
+                ForeColor = Color.FromArgb(203, 213, 225),
+                Location = new Point(405, 82),
+                Size = new Size(390, 20)
+            };
+            pnlHardwareCard.Controls.Add(_lblHwEfi);
+
             var lblBadgeHeader = new Label
             {
-                Text = "Deployment Assessment:",
+                Text = "Deployment & Pre-Boot Readiness Score:",
                 Font = new Font("Segoe UI", 8f),
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Location = new Point(410, 84),
+                Location = new Point(12, 135),
                 AutoSize = true
             };
             pnlHardwareCard.Controls.Add(lblBadgeHeader);
 
             _lblCompatibilityBadge = new Label
             {
-                Text = "⏳ AUDITING COMPATIBILITY...",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Text = "⏳ AUDITING WORKSTATION HARDWARE & PRE-BOOT STACK...",
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(250, 204, 21), // Yellow 400
-                Location = new Point(410, 104),
+                Location = new Point(12, 158),
                 AutoSize = true
             };
             pnlHardwareCard.Controls.Add(_lblCompatibilityBadge);
@@ -172,15 +206,15 @@ namespace DeployManager
             // 3. Action Buttons & Status Panel
             var pnlActions = new Panel
             {
-                Location = new Point(20, 245),
-                Size = new Size(765, 88)
+                Location = new Point(20, 310),
+                Size = new Size(805, 88)
             };
 
             _btnDeployEnterprise = new Button
             {
                 Text = "🚀 Deploy Enterprise Security (Zero Boot Risk)",
                 Location = new Point(0, 5),
-                Size = new Size(375, 46),
+                Size = new Size(395, 46),
                 BackColor = Color.FromArgb(14, 165, 233), // Sky 500
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -193,8 +227,8 @@ namespace DeployManager
             _btnUninstall = new Button
             {
                 Text = "🗑️ Completely Uninstall & Restore",
-                Location = new Point(390, 5),
-                Size = new Size(375, 46),
+                Location = new Point(410, 5),
+                Size = new Size(395, 46),
                 BackColor = Color.FromArgb(225, 29, 72), // Rose 600
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -220,8 +254,8 @@ namespace DeployManager
             // 4. Progress Bar
             _progressBar = new ProgressBar
             {
-                Location = new Point(20, 340),
-                Size = new Size(765, 10),
+                Location = new Point(20, 405),
+                Size = new Size(805, 10),
                 Style = ProgressBarStyle.Continuous,
                 Value = 0
             };
@@ -230,8 +264,8 @@ namespace DeployManager
             // 5. Live Terminal Console Box
             var lblLogsTitle = new Label
             {
-                Text = "📋 Live Deployment & Diagnostics Stream:",
-                Location = new Point(20, 356),
+                Text = "📋 Live Deployment & Deep Hardware / Driver Diagnostics Stream:",
+                Location = new Point(20, 420),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(148, 163, 184)
@@ -240,14 +274,14 @@ namespace DeployManager
 
             _txtLogs = new TextBox
             {
-                Location = new Point(20, 378),
-                Size = new Size(765, 210),
+                Location = new Point(20, 442),
+                Size = new Size(805, 230),
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
                 BackColor = Color.FromArgb(2, 6, 23), // Slate 950
                 ForeColor = Color.FromArgb(52, 211, 153), // Emerald 400
-                Font = new Font("Consolas", 9f),
+                Font = new Font("Consolas", 8.5f),
                 BorderStyle = BorderStyle.FixedSingle
             };
             this.Controls.Add(_txtLogs);
@@ -256,7 +290,7 @@ namespace DeployManager
             var btnCopy = new Button
             {
                 Text = "📋 Copy Logs",
-                Location = new Point(20, 598),
+                Location = new Point(20, 682),
                 Size = new Size(110, 30),
                 BackColor = Color.FromArgb(51, 65, 85),
                 ForeColor = Color.White,
@@ -277,8 +311,8 @@ namespace DeployManager
 
             var lblFooter = new Label
             {
-                Text = "Cyber Workstation Guard • Hardware-Compatible Enterprise Zero-Risk Security Engine",
-                Location = new Point(240, 605),
+                Text = "Cyber Workstation Guard • Deep Hardware, Driver & Pre-Boot Environment Compatibility Engine",
+                Location = new Point(220, 688),
                 AutoSize = true,
                 Font = new Font("Segoe UI", 8f),
                 ForeColor = Color.FromArgb(100, 116, 139)
@@ -291,30 +325,44 @@ namespace DeployManager
         private async Task PerformHardwareScanAsync()
         {
             _btnRescanHardware.Enabled = false;
-            _lblCompatibilityBadge.Text = "⏳ AUDITING HARDWARE...";
+            _lblCompatibilityBadge.Text = "⏳ AUDITING HARDWARE & DRIVER STACK...";
             _lblCompatibilityBadge.ForeColor = Color.FromArgb(250, 204, 21);
 
-            AppendLog("🔍 [HARDWARE AUDIT] Inspecting workstation hardware profile...");
+            AppendLog("🔍 [HARDWARE AUDIT] Inspecting workstation hardware, kernel drivers & pre-boot stack...");
 
             var report = await Task.Run(() => HardwareAuditService.RunAudit());
             _latestAuditReport = report;
 
-            // Update UI card
+            // Update UI card Column 1
             string mbText = $"{report.Motherboard.Manufacturer} - {report.Motherboard.Product}";
             if (report.Motherboard.SystemProductName != "Unknown" && report.Motherboard.SystemProductName != report.Motherboard.Product)
             {
                 mbText += $" ({report.Motherboard.SystemProductName})";
             }
-            _lblHwMotherboard.Text = $"• Motherboard: {mbText}";
-
+            _lblHwMotherboard.Text = $"• Motherboard: {mbText} [{report.Motherboard.EnclosureType}]";
             _lblHwBios.Text = $"• BIOS/Firmware: {report.Bios.Vendor} v{report.Bios.Version} ({report.Bios.BootMode} | SecureBoot: {report.Bios.SecureBootStatus})";
+            
+            string gpuDriverFile = !string.IsNullOrEmpty(report.Graphics.DriverPath) ? Path.GetFileName(report.Graphics.DriverPath) : "DirectX";
+            _lblHwGpu.Text = $"• GPU & GOP: {report.Graphics.GpuName} [Driver: {gpuDriverFile}]";
+            
             _lblHwUser.Text = $"• Operator/Host: {report.SystemUser.UserName} @ {report.SystemUser.MachineName} ({report.SystemUser.OsArchitecture} | {report.SystemUser.TotalPhysicalMemoryMb})";
 
-            _lblHwNetwork.Text = $"• Network: {report.Network.PrimaryMacAddress} (IP: {report.Network.PrimaryIpAddress})\n  Internet Status: {report.Network.InternetStatus}";
+            // Update UI card Column 2
+            string netDriverFile = !string.IsNullOrEmpty(report.Network.PrimaryDriverPath) && report.Network.PrimaryDriverPath != "Unknown" 
+                ? Path.GetFileName(report.Network.PrimaryDriverPath) 
+                : "NDIS";
+            _lblHwNetwork.Text = $"• Network: {report.Network.PrimaryMacAddress} (IP: {report.Network.PrimaryIpAddress} | Driver: {netDriverFile})";
+
+            string storageDriverFile = !string.IsNullOrEmpty(report.Storage.DriverPath) && report.Storage.DriverPath != "Unknown"
+                ? Path.GetFileName(report.Storage.DriverPath)
+                : "Block I/O";
+            _lblHwStorage.Text = $"• Storage: {report.Storage.PrimaryControllerName} [{report.Storage.PartitionStyle} | Driver: {storageDriverFile}]";
+
+            _lblHwEfi.Text = $"• EFI Pre-Boot: {(report.EfiPreboot.HasHiddenBootloader ? "Cloaked (Pre-Boot Active)" : (report.EfiPreboot.HasStandardBootloader ? "Standard Bootmgr Present" : "ESP Verified"))}";
 
             if (report.Assessment.IsFullyCompatible)
             {
-                _lblCompatibilityBadge.Text = $"🟢 {report.Assessment.CompatibilityScore} ({report.Assessment.RecommendedMode})";
+                _lblCompatibilityBadge.Text = $"🟢 {report.Assessment.CompatibilityScore} | {report.PrebootDiagnostics.ReadinessScore} ({report.Assessment.RecommendedMode})";
                 _lblCompatibilityBadge.ForeColor = Color.FromArgb(52, 211, 153); // Emerald
             }
             else
@@ -324,20 +372,34 @@ namespace DeployManager
             }
 
             // Stream detailed audit breakdown to console
-            AppendLog($"🖥️  Motherboard : {report.Motherboard.Manufacturer} {report.Motherboard.Product} [Ver: {report.Motherboard.Version}]");
-            AppendLog($"⚙️  BIOS/Firmware: {report.Bios.Vendor} v{report.Bios.Version} [Boot: {report.Bios.BootMode}, SecureBoot: {report.Bios.SecureBootStatus}]");
-            AppendLog($"👤  User/Host    : {report.SystemUser.UserName} @ {report.SystemUser.MachineName} ({report.SystemUser.OsDescription})");
-            AppendLog($"🧠  CPU / RAM    : {report.SystemUser.ProcessorName} ({report.SystemUser.ProcessorCount} Cores) | {report.SystemUser.TotalPhysicalMemoryMb}");
-            AppendLog($"🌐  Network MAC  : {report.Network.PrimaryMacAddress} | Gateway: {report.Network.PrimaryGateway} | DNS: {report.Network.PrimaryDns}");
-            AppendLog($"📡  Active IP    : {report.Network.PrimaryIpAddress} (Status: {report.Network.InternetStatus})");
+            AppendLog($"════════════════════════════════════════════════════════════════════════════");
+            AppendLog($"🖥️  MOTHERBOARD   : {report.Motherboard.Manufacturer} {report.Motherboard.Product} (Ver: {report.Motherboard.Version}, Serial: {report.Motherboard.SerialNumber})");
+            AppendLog($"📦  CHASSIS/SKU   : {report.Motherboard.EnclosureType} | SKU: {report.Motherboard.SystemSKU} | Family: {report.Motherboard.SystemFamily}");
+            AppendLog($"⚙️  BIOS/FIRMWARE : {report.Bios.Vendor} v{report.Bios.Version} (Rel: {report.Bios.ReleaseDate}, Major.Minor: {report.Bios.MajorRelease}.{report.Bios.MinorRelease})");
+            AppendLog($"🔐  BOOT MODE     : {report.Bios.BootMode} | SecureBoot: {report.Bios.SecureBootStatus}");
+            AppendLog($"🎮  DISPLAY/GPU   : {report.Graphics.GpuName} (Provider: {report.Graphics.ProviderName}, Ver: {report.Graphics.DriverVersion})");
+            AppendLog($"    GPU DRIVER    : {report.Graphics.DriverPath}");
+            AppendLog($"    UEFI GOP      : {report.Graphics.UefiGopStatus}");
+            AppendLog($"🌐  NETWORK CHIP  : {report.Network.PrimaryAdapterName} [MAC: {report.Network.PrimaryMacAddress}]");
+            AppendLog($"    NIC DRIVER    : {report.Network.PrimaryDriverPath}");
+            AppendLog($"    UNDI/SNP ROM  : Embedded Motherboard Pre-Boot Network Stack Supported");
+            AppendLog($"    NETWORK IP    : {report.Network.PrimaryIpAddress} | Gateway: {report.Network.PrimaryGateway} | DNS: {report.Network.PrimaryDns}");
+            AppendLog($"    CONNECTIVITY  : {report.Network.InternetStatus}");
+            AppendLog($"💾  STORAGE CTRL  : {report.Storage.PrimaryControllerName} ({report.Storage.ControllerType})");
+            AppendLog($"    STORAGE DRV   : {report.Storage.DriverPath}");
+            AppendLog($"    DISK & STYLE  : {report.Storage.PrimaryDiskName} | Partition Style: {report.Storage.PartitionStyle}");
+            AppendLog($"📁  EFI PRE-BOOT  : ESP Volume: {report.EfiPreboot.EspVolumeGuid} [BootDevice: {report.EfiPreboot.FirmwareBootDevice}]");
+            AppendLog($"    BOOTLOADERS   : bootmgfw.efi: {(report.EfiPreboot.HasStandardBootloader ? "Found" : "Not present")}, bootmgfw_hidden.efi: {(report.EfiPreboot.HasHiddenBootloader ? "Cloaked" : "None")}");
 
-            foreach (var note in report.Assessment.CompatibilityNotes)
+            AppendLog($"📋  PRE-BOOT ASSET READINESS DIAGNOSTICS:");
+            foreach (var item in report.PrebootDiagnostics.DiagnosticChecklist)
             {
-                AppendLog($"    {note}");
+                AppendLog($"    {item}");
             }
 
-            AppendLog($"🎯 [ASSESSMENT] Workstation Compatibility: {report.Assessment.CompatibilityScore}");
+            AppendLog($"🎯 [ASSESSMENT] Workstation Compatibility: {report.Assessment.CompatibilityScore} | Pre-Boot Readiness: {report.PrebootDiagnostics.ReadinessScore}");
             AppendLog($"    Recommended Profile: {report.Assessment.RecommendedMode}");
+            AppendLog($"════════════════════════════════════════════════════════════════════════════");
 
             _btnRescanHardware.Enabled = true;
         }
@@ -378,7 +440,7 @@ namespace DeployManager
                 _lblStatus.ForeColor = Color.FromArgb(52, 211, 153);
                 MessageBox.Show(
                     "Enterprise Zero-Risk Security System is successfully deployed and active!\n\n" +
-                    "• Hardware Verified: Motherboard, BIOS & Network profile locked\n" +
+                    "• Hardware Verified: Motherboard, BIOS, Display & Network profile locked\n" +
                     "• 0% Boot Freeze Risk (Standard Factory Microsoft Bootloader)\n" +
                     "• Background PC Security Agent is Live & Online (🟢)\n" +
                     "• Windows Kernel Remote Lock/Unlock is Fully Protected",

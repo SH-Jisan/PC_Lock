@@ -11,10 +11,11 @@ For every modification or addition, this log records:
 
 ---
 
-## 🚀 Active Feature Inventory (Current System State - v1.1.0)
+## 🚀 Active Feature Inventory (Current System State - v1.3.0)
 
 | Subsystem | Key Components | Technical Implementation |
 | :--- | :--- | :--- |
+| **Deep Hardware & Driver Diagnostics** | GPU/GOP Driver, NIC UNDI/SNP, NVMe/SATA Storage, EFI ESP Loader | Zero-dependency Win32 Registry kernel driver (`.sys`) resolution, PCI enumeration, UEFI GOP & UNDI/SNP pre-boot readiness scoring, EFI volume partition detection. |
 | **Custom Cyber Lock Engine** | Isolated Desktop, Global Keyboard Hook, TaskMgr Policy, Topmost Cyber UI | Win32 `CreateDesktop` (`PC_LOCK_SECURE_DESKTOP`), `WH_KEYBOARD_LL` low-level hook blocking Win/Alt+Tab/Alt+F4, Registry `DisableTaskMgr=1`, Dark Theme Fullscreen WinForms with QR code and touch keypad. |
 | **Zero-Dependency Deployment** | Standalone Single-File `.exe`, Dynamic Discovery, Permanent Install | .NET 8 `--self-contained true -p:PublishSingleFile=true`, dynamic path resolution (`ResolveSecurityAgent`), automatic copy to `C:\Program Files\PCSecuritySystem\` for safe USB pendrive removal. |
 | **Safe Diagnostic Harness** | Firmware-Neutral Test Script | `test_lock_engine.bat` with `--test-lock` flag; neutralizes `BootGuardHealer` to allow safe desktop UI & keyboard shield testing without touching UEFI or rebooting. |
@@ -27,6 +28,49 @@ For every modification or addition, this log records:
 ---
 
 ## 📜 Detailed Change History & Evolution Log
+
+### [v1.3.0] - 2026-09-13: Deep Hardware & Pre-Boot Driver Diagnostics Engine
+
+#### 1. Zero-Dependency Deep Hardware & Kernel Driver Inspection
+* **Files**:
+  - [`DeployManager/Services/HardwareAuditService.cs`](file:///h:/PC_Lock/DeployManager/Services/HardwareAuditService.cs) [MODIFIED]
+  - [`pc-agent/Hardware/HardwareProfile.cs`](file:///h:/PC_Lock/pc-agent/Hardware/HardwareProfile.cs) [MODIFIED]
+* **What was added / changed (কী করা হয়েছে)**:
+  - পিসির গ্রাফিক্স, স্টোরেজ, নেটওয়ার্ক ড্রাইভার এবং প্রি-বুট ফার্মওয়্যার অ্যাসেট শতভাগ নির্ভুলভাবে ডিটেক্ট করার জন্য জিরো-ডিপেন্ডেন্সি রেজিস্ট্রি স্ক্যানার (`HKLM\SYSTEM\CurrentControlSet\Control\Class\...` এবং `HKLM\SYSTEM\CurrentControlSet\Enum\PCI\...`) এবং Win32 কার্নেল সার্ভিস পাথ রেজোলিউশন তৈরি করা হয়েছে:
+    1. **গ্রাফিক্স ও ডিসপ্লে হার্ডওয়্যার (GPU & Graphics Driver)**:
+       - সক্রিয় GPU অ্যাডাপ্টারের নাম, ভেন্ডর/প্রোভাইডার, PCI Device ID, ড্রাইভার ভার্সন ও তারিখ ডিটেকশন।
+       - উইন্ডোজ রেজিস্ট্রি থেকে এক্সাক্ট কার্নেল ডিসপ্লে ড্রাইভার ফাইল পাথ (`.sys`, যেমন: `C:\Windows\System32\DriverStore\FileRepository\...\igdkmd64.sys` বা `nvlddmkm.sys`) স্বয়ংক্রিয়ভাবে চিহ্নিতকরণ।
+       - UEFI Graphics Output Protocol (GOP) রেডিলেস যাচাইকরণ (Native UEFI মোডে GOP সক্রিয় কি না)।
+    2. **নেটওয়ার্ক কার্ড ও ড্রাইভ পাথ (NIC & Driver Stack)**:
+       - ফিজিক্যাল ও PCI নেটওয়ার্ক ইন্টারফেসের PCI ID, প্রস্তুতকারক, ড্রাইভার ভার্সন এবং রিয়েল কার্নেল ড্রাইভার ফাইল (`.sys`, যেমন: `rt68cx21x64.sys`) রেজোলিউশন।
+       - প্রি-বুট নেটওয়ার্ক আনলকের জন্য UEFI UNDI (Universal Network Device Interface) / SNP (Simple Network Protocol) ROM ক্যাপাবিলিটি অ্যাসেসমেন্ট।
+    3. **স্টোরেজ কন্ট্রোলার ও ডিস্ক পার্টিশন আর্কিটেকচার**:
+       - NVMe বনাম SATA AHCI বাস টাইপ ডিটেকশন এবং সংশ্লিষ্ট মিনিপোর্ট কার্নেল ড্রাইভার (`stornvme.sys` বা `storahci.sys`) সনাক্তকরণ।
+       - ডিস্ক পার্টিশন স্টাইল (GPT বনাম MBR) এবং ড্রাইভ মডেল ভেরিফিকেশন।
+    4. **EFI সিস্টেম পার্টিশন (ESP) ও প্রি-বুট বুটলোডার অ্যাসেট স্ক্যানার**:
+       - Win32 ভলিউম স্ক্যানিং (`\\?\Volume{GUID}\`) এবং মাউন্ট পয়েন্ট ছাড়া EFI পার্টিশন সনাক্তকরণ।
+       - মাইক্রোসফটের অফিসিয়াল বুটলোডার (`\EFI\Microsoft\Boot\bootmgfw.efi`), ব্যাকআপ বুটলোডার (`bootmgfw_hidden.efi`), এবং ডিফল্ট রুট লোডার (`\EFI\Boot\bootx64.efi`)-এর সঠিক লোকেশন যাচাই।
+       - `FirmwareBootDevice` রেজিস্ট্রি কি থেকে পিসির বুট পাথ উদ্ধার।
+    5. **প্রি-বুট অ্যাসেটস ডায়াগনস্টিকস ও স্কোরিং**:
+       - প্রি-বুট লক স্ক্রিনের জন্য প্রয়োজনীয় সকল হার্ডওয়্যার কম্পোনেন্ট (GOP Display, Pre-boot NIC, Storage Controller, EFI Boot Partition) মিলিয়ে একটি কম্প্রিহেনসিভ ডায়াগনস্টিক স্কোর (০-১০০%) এবং রিকমেন্ডেশন তৈরি।
+  - `pc-agent/Hardware/HardwareProfile.cs`-এ নতুন ফিল্ডগুলো (`GpuName`, `GpuDriverPath`, `UefiGopSupported`, `NetworkDriverPath`, `StorageController`, `StorageDriverPath`, `PartitionStyle`, `EfiPartitionGuid`) যুক্ত করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - ক্লায়েন্ট বা ক্যাফে পিসিতে ডিপ্লয় করার সময় আগে জানা যেত না প্রি-বুট লক মোডের জন্য ডিসপ্লে অ্যাডাপ্টারে UEFI GOP ফার্মওয়্যার সাপোর্ট আছে কি না, বা নেটওয়ার্ক কার্ডের UNDI/SNP ROM সক্রিয় আছে কি না। গভীর ড্রাইভার ও EFI স্ক্যানিংয়ের ফলে এখন আগে থেকেই জানা যায় পিসিটিতে প্রি-বুট লক মোড চালু করলে কোনো বুট স্ক্রিন বা নেটওয়ার্ক ক্র্যাশ হবে কি না।
+
+#### 2. Visual Deep Diagnostics GUI & Console Stream in DeployManager
+* **Files**:
+  - [`DeployManager/MainForm.cs`](file:///h:/PC_Lock/DeployManager/MainForm.cs) [MODIFIED]
+* **What was added / changed (কী করা হয়েছে)**:
+  - `MainForm.cs`-এর হার্ডওয়্যার প্রোফাইল কার্ড বড় করে (805x205 px) সেখানে নতুন ৪টি স্পষ্ট স্ট্যাটাস সারি যুক্ত করা হয়েছে:
+    - 🎮 **GPU / GOP**: ডিসপ্লে কার্ড ও তার কার্নেল ড্রাইভার নাম এবং GOP রেডি স্ট্যাটাস।
+    - 🌐 **NIC / Driver**: নেটওয়ার্ক কার্ডের নাম ও তার এক্সাক্ট `.sys` ফাইল।
+    - 💾 **Storage / Disk**: স্টোরেজ বাস (NVMe/SATA), কন্ট্রোলার ড্রাইভার এবং GPT/MBR পার্টিশন ফরম্যাট।
+    - ⚡ **EFI Preboot**: EFI বুটলোডার পাথ এবং প্রি-বুট হার্ডওয়্যার রেডি স্কোর।
+  - লাইভ ডায়াগনস্টিক টার্মিনাল কনসোলে সম্পূর্ণ ড্রাইভ পাথ, PCI ডিভাইস আইডি এবং প্রি-বুট অ্যাসেট চেকলিস্টের বিস্তারিত আউটপুট প্রিন্ট করার ব্যবস্থা করা হয়েছে।
+* **Why it was done (কেন করা হয়েছে)**:
+  - ব্যবহারকারী বা অ্যাডমিন DeployManager ওপেন করলেই যেন চোখের সামনে সম্পূর্ণ হার্ডওয়্যার, গ্রাফিক্স ড্রাইভার, নেটওয়ার্ক ড্রাইভার ও ফার্মওয়্যার অ্যাসেটের লাইভ অবস্থান দেখতে পান।
+
+---
 
 ### [v1.2.0] - 2026-09-06: Pre-Flight Hardware Audit & Compatibility Diagnostics Engine
 

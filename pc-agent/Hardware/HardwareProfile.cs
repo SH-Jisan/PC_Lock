@@ -21,6 +21,18 @@ namespace PC.SecurityAgent.Hardware
         public string PrimaryIp { get; set; } = "Unknown";
         public string HostName { get; set; } = "Unknown";
         public string UserName { get; set; } = "Unknown";
+
+        // Extended Graphics, Network Driver, Storage, and Pre-boot properties
+        public string GpuName { get; set; } = "Unknown GPU";
+        public string GpuDriverPath { get; set; } = "Unknown";
+        public bool UefiGopSupported { get; set; }
+        public string PrimaryNetworkDriverPath { get; set; } = "Unknown";
+        public bool PrebootUndiSupported { get; set; }
+        public string StorageControllerName { get; set; } = "Unknown Controller";
+        public string StorageDriverPath { get; set; } = "Unknown";
+        public string PartitionStyle { get; set; } = "GPT";
+        public string EspVolumeGuid { get; set; } = "Undetected";
+        public bool PrebootReady { get; set; }
     }
 
     public static class HardwareProfile
@@ -78,10 +90,37 @@ namespace PC.SecurityAgent.Hardware
                         profile.SecureBootEnabled = bios.GetProperty("SecureBootEnabled").GetBoolean();
                     }
 
+                    if (root.TryGetProperty("Graphics", out var gfx))
+                    {
+                        profile.GpuName = gfx.GetProperty("GpuName").GetString() ?? "Unknown GPU";
+                        profile.GpuDriverPath = gfx.GetProperty("DriverPath").GetString() ?? "Unknown";
+                        if (gfx.TryGetProperty("UefiGopSupported", out var gopProp))
+                        {
+                            profile.UefiGopSupported = gopProp.GetBoolean();
+                        }
+                    }
+
                     if (root.TryGetProperty("Network", out var net))
                     {
                         profile.PrimaryMac = net.GetProperty("PrimaryMacAddress").GetString() ?? "Unknown";
                         profile.PrimaryIp = net.GetProperty("PrimaryIpAddress").GetString() ?? "Unknown";
+                        if (net.TryGetProperty("PrimaryDriverPath", out var drvProp))
+                        {
+                            profile.PrimaryNetworkDriverPath = drvProp.GetString() ?? "Unknown";
+                        }
+                    }
+
+                    if (root.TryGetProperty("Storage", out var storage))
+                    {
+                        profile.StorageControllerName = storage.GetProperty("PrimaryControllerName").GetString() ?? "Unknown Controller";
+                        profile.StorageDriverPath = storage.GetProperty("DriverPath").GetString() ?? "Unknown";
+                        profile.PartitionStyle = storage.GetProperty("PartitionStyle").GetString() ?? "GPT";
+                    }
+
+                    if (root.TryGetProperty("EfiPreboot", out var efi))
+                    {
+                        profile.EspVolumeGuid = efi.GetProperty("EspVolumeGuid").GetString() ?? "Undetected";
+                        profile.PrebootReady = efi.GetProperty("PrebootReady").GetBoolean();
                     }
 
                     return profile;
@@ -118,6 +157,14 @@ namespace PC.SecurityAgent.Hardware
                 {
                     object? val = secureBootKey.GetValue("UEFISecureBootEnabled");
                     if (val is int intVal) profile.SecureBootEnabled = (intVal == 1);
+                }
+
+                // Live GPU inspect
+                using var classKey = baseKey.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000");
+                if (classKey != null)
+                {
+                    profile.GpuName = classKey.GetValue("DriverDesc")?.ToString()?.Trim() ?? "Unknown GPU";
+                    profile.UefiGopSupported = profile.BootMode.Contains("UEFI");
                 }
             }
             catch { }
