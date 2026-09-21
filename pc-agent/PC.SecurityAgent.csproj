@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>PC.SecurityAgent</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>

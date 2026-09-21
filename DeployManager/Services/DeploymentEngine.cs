@@ -53,30 +53,72 @@ namespace DeployManager.Services
 
                 // Step 2: Configure & Start Enterprise PC Security Agent
                 log("[2/3] Configuring Enterprise Background Security Agent...");
-                string dotnetExe = @"D:\Soft\dotnet\dotnet.exe";
-                if (!File.Exists(dotnetExe)) dotnetExe = "dotnet";
-
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string agentDll = Path.GetFullPath(Path.Combine(baseDir, @"..\..\pc-agent\bin\App\PC.SecurityAgent.dll"));
-                if (!File.Exists(agentDll)) agentDll = @"D:\Soft\PC_Lock\pc-agent\bin\App\PC.SecurityAgent.dll";
+                ResolveSecurityAgent(baseDir, out string agentExe, out string agentArgs);
+
+                if (!File.Exists(agentExe))
+                {
+                    log($"❌ [ERROR] Security Agent executable was not found at: {agentExe}");
+                    log("   Please compile the agent or run build_all_standalone.bat first.");
+                    return false;
+                }
+
+                // Install agent permanently to C:\Program Files\PCSecuritySystem so USB pendrive can be safely removed
+                string permanentDir = @"C:\Program Files\PCSecuritySystem";
+                string permanentAgentExe = Path.Combine(permanentDir, "PC.SecurityAgent.exe");
+                try
+                {
+                    if (!Directory.Exists(permanentDir)) Directory.CreateDirectory(permanentDir);
+                    if (!string.Equals(agentExe, permanentAgentExe, StringComparison.OrdinalIgnoreCase))
+                    {
+                        File.Copy(agentExe, permanentAgentExe, true);
+                        agentExe = permanentAgentExe;
+                        agentArgs = "";
+                        log("[✔] Copied standalone agent to permanent path: C:\\Program Files\\PCSecuritySystem\\");
+                    }
+
+                    // Perform pre-flight hardware audit and save persistent profile
+                    try
+                    {
+                        var audit = HardwareAuditService.RunAudit();
+                        string auditJson = audit.ToJson(true);
+                        File.WriteAllText(Path.Combine(permanentDir, "hardware_audit.json"), auditJson);
+                        log($"[✔] Workstation Hardware Profile: {audit.Motherboard.Manufacturer} {audit.Motherboard.Product} [MAC: {audit.Network.PrimaryMacAddress}]");
+                        log("[✔] Saved hardware audit profile: C:\\Program Files\\PCSecuritySystem\\hardware_audit.json");
+                    }
+                    catch (Exception aEx)
+                    {
+                        log($"[!] Hardware profile note: {aEx.Message}");
+                    }
+                }
+                catch { }
 
                 ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
 
                 // Start agent detached in background
-                Process.Start(new ProcessStartInfo
+                try
                 {
-                    FileName = dotnetExe,
-                    Arguments = $"\"{agentDll}\"",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true
-                });
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = agentExe,
+                        Arguments = agentArgs,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    });
+                }
+                catch (Exception pEx)
+                {
+                    log($"❌ [ERROR] Failed to start Security Agent: {pEx.Message}");
+                    return false;
+                }
 
                 // Configure Windows Startup Run Key for reboot persistence
                 try
                 {
                     using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-                    key?.SetValue("PCSecurityAgent", $"\"{dotnetExe}\" \"{agentDll}\"");
+                    string runCmd = string.IsNullOrEmpty(agentArgs) ? $"\"{agentExe}\"" : $"\"{agentExe}\" {agentArgs}";
+                    key?.SetValue("PCSecurityAgent", runCmd);
                 }
                 catch { }
 
@@ -132,10 +174,9 @@ namespace DeployManager.Services
                 }
 
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                string prebootBin = Path.GetFullPath(Path.Combine(baseDir, @"..\..\uefi-preboot\bin\pc_lock_preboot.efi"));
-                if (!File.Exists(prebootBin)) prebootBin = @"D:\Soft\PC_Lock\uefi-preboot\bin\pc_lock_preboot.efi";
+                string? prebootBin = FindPrebootEfiBinary(baseDir);
 
-                if (File.Exists(prebootBin))
+                if (prebootBin != null && File.Exists(prebootBin))
                 {
                     File.Copy(prebootBin, Path.Combine(msBootDir, "bootmgfw.efi"), true);
                     File.Copy(prebootBin, Path.Combine(bootDir, "bootx64.efi"), true);
@@ -147,19 +188,31 @@ namespace DeployManager.Services
                 ExecuteCommand("bcdedit", "/set {fwbootmgr} displayorder {bootmgr} /remove");
                 ExecuteCommand("mountvol", $"{mountLetter}: /d");
 
-                string dotnetExe = @"D:\Soft\dotnet\dotnet.exe";
-                if (!File.Exists(dotnetExe)) dotnetExe = "dotnet";
-                string agentDll = @"D:\Soft\PC_Lock\pc-agent\bin\App\PC.SecurityAgent.dll";
+                ResolveSecurityAgent(baseDir, out string agentExe, out string agentArgs);
+
+                if (!File.Exists(agentExe))
+                {
+                    log($"❌ [ERROR] Security Agent executable was not found at: {agentExe}");
+                    return false;
+                }
 
                 ExecuteCommand("taskkill", "/F /IM PC.SecurityAgent.exe");
-                Process.Start(new ProcessStartInfo
+                try
                 {
-                    FileName = dotnetExe,
-                    Arguments = $"\"{agentDll}\"",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true
-                });
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = agentExe,
+                        Arguments = agentArgs,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    });
+                }
+                catch (Exception pEx)
+                {
+                    log($"❌ [ERROR] Failed to start Security Agent: {pEx.Message}");
+                    return false;
+                }
 
                 progress.Report(100);
                 log("🎉 [SUCCESS] Firmware Pre-Boot with Watchdog Deployed.");
@@ -268,6 +321,13 @@ namespace DeployManager.Services
 
                     Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\PCSecuritySystem", false);
                     log("[✔] Registry configuration keys completely purged.");
+
+                    // Remove permanent installation directory
+                    string permanentDir = @"C:\Program Files\PCSecuritySystem";
+                    if (Directory.Exists(permanentDir))
+                    {
+                        try { Directory.Delete(permanentDir, true); log("[✔] Cleaned permanent C:\\Program Files\\PCSecuritySystem\\ folder."); } catch { }
+                    }
                 }
                 catch { }
                 progress.Report(95);
@@ -314,6 +374,72 @@ namespace DeployManager.Services
                 p?.WaitForExit(4000);
             }
             catch { }
+        }
+
+        private static void ResolveSecurityAgent(string baseDir, out string exePath, out string arguments)
+        {
+            string[] exeCandidates = new[]
+            {
+                Path.Combine(baseDir, "PC.SecurityAgent.exe"),
+                Path.Combine(baseDir, "Agent", "PC.SecurityAgent.exe"),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\Agent\PC.SecurityAgent.exe")),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\..\bin_publish\PC.SecurityAgent.exe")),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\..\release_package\Agent\PC.SecurityAgent.exe")),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\..\pc-agent\bin\Release\net8.0-windows\win-x64\publish\PC.SecurityAgent.exe")),
+                @"C:\Program Files\PCSecuritySystem\PC.SecurityAgent.exe"
+            };
+
+            foreach (var path in exeCandidates)
+            {
+                if (File.Exists(path))
+                {
+                    exePath = path;
+                    arguments = "";
+                    return;
+                }
+            }
+
+            string[] dllCandidates = new[]
+            {
+                Path.Combine(baseDir, "PC.SecurityAgent.dll"),
+                Path.Combine(baseDir, "Agent", "PC.SecurityAgent.dll"),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\..\pc-agent\bin\App\PC.SecurityAgent.dll")),
+                @"D:\Soft\PC_Lock\pc-agent\bin\App\PC.SecurityAgent.dll"
+            };
+
+            foreach (var path in dllCandidates)
+            {
+                if (File.Exists(path))
+                {
+                    string dotnet = @"D:\Soft\dotnet\dotnet.exe";
+                    if (!File.Exists(dotnet)) dotnet = "dotnet";
+                    exePath = dotnet;
+                    arguments = $"\"{path}\"";
+                    return;
+                }
+            }
+
+            exePath = Path.Combine(baseDir, "PC.SecurityAgent.exe");
+            arguments = "";
+        }
+
+        private static string? FindPrebootEfiBinary(string baseDir)
+        {
+            string[] efiCandidates = new[]
+            {
+                Path.Combine(baseDir, "pc_lock_preboot.efi"),
+                Path.Combine(baseDir, "UEFI", "pc_lock_preboot.efi"),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\UEFI\pc_lock_preboot.efi")),
+                Path.GetFullPath(Path.Combine(baseDir, @"..\..\uefi-preboot\bin\pc_lock_preboot.efi")),
+                @"D:\Soft\PC_Lock\uefi-preboot\bin\pc_lock_preboot.efi",
+                @"C:\Program Files\PCSecuritySystem\pc_lock_preboot.efi"
+            };
+
+            foreach (var path in efiCandidates)
+            {
+                if (File.Exists(path)) return path;
+            }
+            return null;
         }
     }
 }

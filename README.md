@@ -27,8 +27,7 @@ Unlike standard software lockers that only lock the Windows desktop screen, this
 - [🔒 Enterprise Hardening & Defense Recommendations](#-enterprise-hardening--defense-recommendations)
 - [📁 Project Repository Structure](#-project-repository-structure)
 
----
-
+-----
 ## 🛡️ System Architecture
 
 ```
