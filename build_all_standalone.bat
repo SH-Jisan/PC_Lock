@@ -98,7 +98,11 @@ if exist "%~dp0uefi-preboot\bin\pc_lock_preboot.efi" (
 
 if exist "%~dp0mobile-app\index.html" (
     copy /y "%~dp0mobile-app\index.html" "%DIST_DIR%\MobileController\index.html" >nul
-    copy /y "%~dp0mobile-app\manifest.json" "%DIST_DIR%\MobileController\manifest.json" >nul
+    if exist "%~dp0mobile-app\manifest.json" copy /y "%~dp0mobile-app\manifest.json" "%DIST_DIR%\MobileController\manifest.json" >nul
+    if not exist "%DIST_DIR%\MobileController\css" mkdir "%DIST_DIR%\MobileController\css"
+    if not exist "%DIST_DIR%\MobileController\js" mkdir "%DIST_DIR%\MobileController\js"
+    if exist "%~dp0mobile-app\css" xcopy /y /e "%~dp0mobile-app\css" "%DIST_DIR%\MobileController\css\" >nul
+    if exist "%~dp0mobile-app\js" xcopy /y /e "%~dp0mobile-app\js" "%DIST_DIR%\MobileController\js\" >nul
     echo [OK] Bundled Mobile Controller Web App.
 )
 
