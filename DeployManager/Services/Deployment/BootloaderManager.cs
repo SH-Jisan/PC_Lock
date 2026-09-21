@@ -89,7 +89,7 @@ namespace DeployManager.Services
             {
                 if (File.Exists(originalBootMgfw)) File.Delete(originalBootMgfw);
                 File.Move(hiddenBootMgfw, originalBootMgfw);
-                log("[✔] Microsoft bootmgfw.efi verified in standard factory state.");
+                log("[\u2714] Microsoft bootmgfw.efi verified in standard factory state.");
             }
 
             if (Directory.Exists(pcLockDir))
@@ -99,7 +99,7 @@ namespace DeployManager.Services
 
             UnmountEsp(mountLetter);
             SetWindowsBootManagerPrimary();
-            log("[✔] Windows Boot Manager confirmed as primary bootloader (0% boot delay).");
+            log("[\u2714] Windows Boot Manager confirmed as primary bootloader (0% boot delay).");
         }
 
         public static bool DeployPreBootEfi(Action<string> log)
@@ -132,7 +132,7 @@ namespace DeployManager.Services
                 File.Copy(prebootBin, Path.Combine(msBootDir, "bootmgfw.efi"), true);
                 File.Copy(prebootBin, Path.Combine(bootDir, "bootx64.efi"), true);
                 File.Copy(prebootBin, Path.Combine(pcLockDir, "pc_lock_preboot.efi"), true);
-                log("[✔] Safe Pre-Boot binary with 20s watchdog installed.");
+                log("[\u2714] Safe Pre-Boot binary with 20s watchdog installed.");
             }
 
             RemoveWindowsBootManagerFromDisplayOrder();
@@ -157,23 +157,80 @@ namespace DeployManager.Services
             {
                 if (File.Exists(originalBootMgfw)) File.Delete(originalBootMgfw);
                 File.Move(hiddenBootMgfw, originalBootMgfw);
-                log("[✔] Original Microsoft bootmgfw.efi successfully restored.");
+                log("[\u2714] Original Microsoft bootmgfw.efi successfully restored.");
             }
 
             if (File.Exists(bootx64Orig))
             {
                 if (File.Exists(bootx64)) File.Delete(bootx64);
                 File.Move(bootx64Orig, bootx64);
-                log("[✔] Original fallback bootx64.efi restored.");
+                log("[\u2714] Original fallback bootx64.efi restored.");
             }
 
             if (Directory.Exists(pcLockDir))
             {
                 Directory.Delete(pcLockDir, true);
-                log("[✔] Deleted EFI\\PCLock folder and pre-boot configurations.");
+                log("[\u2714] Deleted EFI\\PCLock folder and pre-boot configurations.");
             }
 
             UnmountEsp(mountLetter);
+        }
+
+        public static void SyncWifiProfileToPreboot(Action<string> log)
+        {
+            try
+            {
+                string mountLetter = GetAvailableDriveLetter();
+                MountEsp(mountLetter);
+                string pcLockDir = Path.Combine($"{mountLetter}:\\EFI", "PCLock");
+                if (!Directory.Exists(pcLockDir)) Directory.CreateDirectory(pcLockDir);
+
+                string netshInterfaces = RunProcessWithOutput("netsh", "wlan show interfaces");
+                var ssidMatch = System.Text.RegularExpressions.Regex.Match(netshInterfaces, @"\bSSID\s*:\s*(.+)$", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+                if (ssidMatch.Success)
+                {
+                    string ssid = ssidMatch.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(ssid))
+                    {
+                        string profileOutput = RunProcessWithOutput("netsh", $"wlan show profile name=\"{ssid}\" key=clear");
+                        var keyMatch = System.Text.RegularExpressions.Regex.Match(profileOutput, @"Key Content\s*:\s*(.+)$", System.Text.RegularExpressions.RegexOptions.Multiline);
+                        string psk = keyMatch.Success ? keyMatch.Groups[1].Value.Trim() : string.Empty;
+
+                        string json = $"{{\n  \"ssid\": \"{ssid}\",\n  \"psk\": \"{psk}\",\n  \"synced_at\": \"{DateTime.UtcNow:o}\"\n}}";
+                        File.WriteAllText(Path.Combine(pcLockDir, "wifi_config.json"), json);
+                        log($"[\u2714] Synced active Wi-Fi profile ({ssid}) to Pre-Boot partition.");
+                    }
+                }
+                UnmountEsp(mountLetter);
+            }
+            catch (Exception ex)
+            {
+                log($"[Notice] Wi-Fi pre-boot sync notice: {ex.Message}");
+            }
+        }
+
+        private static string RunProcessWithOutput(string filename, string arguments)
+        {
+            try
+            {
+                using var p = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = filename,
+                        Arguments = arguments,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true
+                    }
+                };
+                p.Start();
+                string output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(3000);
+                return output;
+            }
+            catch { return string.Empty; }
         }
     }
 }

@@ -58,7 +58,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             var lblPulsingLock = new Label
             {
-                Text = "🔒 SYSTEM LOCKED",
+                Text = "\uD83D\uDD12 SYSTEM LOCKED",
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(244, 63, 94),
                 BackColor = Color.FromArgb(30, 27, 46),
@@ -124,7 +124,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             var lblMobileTitle = new Label
             {
-                Text = "📱 Remote Mobile Authorization",
+                Text = "\uD83D\uDCF1 Remote Mobile Authorization",
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(56, 189, 248),
                 Location = new Point(25, 20),
@@ -151,7 +151,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             _lblStatusMsg = new Label
             {
-                Text = "● Listening for live cloud unlock command...",
+                Text = "• Listening for live cloud unlock command...",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
                 ForeColor = Color.FromArgb(52, 211, 153),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -175,7 +175,7 @@ namespace PC.SecurityAgent.LockEngine.Views
 
             var lblKeypadTitle = new Label
             {
-                Text = "🔢 Emergency Master PIN",
+                Text = "\uD83D\uDD11 Emergency Master PIN",
                 Font = new Font("Segoe UI", 12f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(244, 114, 182),
                 Location = new Point(25, 20),

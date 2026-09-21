@@ -115,7 +115,7 @@ namespace PC.SecurityAgent.LockEngine.Views
             }
             else
             {
-                _lblPinDisplay.Text = new string('●', _enteredPin.Length);
+                _lblPinDisplay.Text = new string('\u25CF', _enteredPin.Length);
                 _lblPinDisplay.ForeColor = Color.FromArgb(56, 189, 248);
             }
         }
@@ -127,7 +127,7 @@ namespace PC.SecurityAgent.LockEngine.Views
                 pin.Equals("SHJ", StringComparison.OrdinalIgnoreCase) ||
                 pin.Equals("123456", StringComparison.OrdinalIgnoreCase))
             {
-                _lblPinDisplay.Text = "✔ ACCESS GRANTED";
+                _lblPinDisplay.Text = "[\u2714] ACCESS GRANTED";
                 _lblPinDisplay.ForeColor = Color.FromArgb(52, 211, 153);
                 _lblStatusMsg.Text = "Unlocking desktop...";
                 _lblStatusMsg.ForeColor = Color.FromArgb(52, 211, 153);
@@ -150,7 +150,7 @@ namespace PC.SecurityAgent.LockEngine.Views
             }
             else
             {
-                _lblPinDisplay.Text = "✖ ACCESS DENIED";
+                _lblPinDisplay.Text = "[\u2716] ACCESS DENIED";
                 _lblPinDisplay.ForeColor = Color.FromArgb(244, 63, 94);
                 _enteredPin = "";
                 Task.Delay(800).ContinueWith(_ =>

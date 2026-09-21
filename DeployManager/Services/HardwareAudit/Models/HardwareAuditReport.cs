@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Text.Json;
+using DeployManager.Services.HardwareAudit.Models;
 
 namespace DeployManager.Services
 {
@@ -15,6 +16,7 @@ namespace DeployManager.Services
         public EfiPrebootEnvironmentInfo EfiPreboot { get; set; } = new();
         public PrebootAssetsDiagnostics PrebootDiagnostics { get; set; } = new();
         public CompatibilityAssessment Assessment { get; set; } = new();
+        public AdaptiveProfile AdaptiveProfile { get; set; } = new();
 
         public string ToJson(bool indented = true)
         {

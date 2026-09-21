@@ -106,6 +106,11 @@ if exist "%~dp0mobile-app\index.html" (
     echo [OK] Bundled Mobile Controller Web App.
 )
 
+:: Copy Self-Diagnosis & Verification scripts
+if exist "%~dp0verify_installation.bat" copy /y "%~dp0verify_installation.bat" "%DIST_DIR%\" >nul
+if exist "%~dp0test_lock_engine.bat" copy /y "%~dp0test_lock_engine.bat" "%DIST_DIR%\" >nul
+echo [OK] Bundled Self-Diagnosis Health Verifier (verify_installation.bat).
+
 :: Create Target PC User Guide
 set "GUIDE_FILE=%DIST_DIR%\HOW_TO_RUN_ON_CLIENT_PC.txt"
 echo =============================================================================== > "%GUIDE_FILE%"

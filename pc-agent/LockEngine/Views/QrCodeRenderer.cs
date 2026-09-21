@@ -31,7 +31,8 @@ namespace PC.SecurityAgent.LockEngine.Views
             }
 
             g.FillRectangle(new SolidBrush(Color.FromArgb(10, 15, 29)), (size - 36) / 2, (size - 36) / 2, 36, 36);
-            g.DrawString("🔒", new Font("Segoe UI", 14f), Brushes.White, (size - 30) / 2, (size - 30) / 2);
+            using var font = new Font("Segoe UI", 13f, FontStyle.Bold);
+            g.DrawString("\uD83D\uDD12", font, Brushes.White, (size - 30) / 2, (size - 34) / 2);
         }
 
         public static void DrawQrEye(Graphics g, int x, int y, int size)

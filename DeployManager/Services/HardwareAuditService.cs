@@ -1,11 +1,11 @@
-using System;
+﻿using System;
 using DeployManager.Services.HardwareAudit.Auditors;
 
 namespace DeployManager.Services
 {
     /// <summary>
-    /// Master Hardware Audit Service Façade.
-    /// Coordinates modular hardware domain auditors for deep pre-flight diagnosis.
+    /// Master Hardware Audit Service Facade.
+    /// Coordinates modular hardware domain auditors for deep pre-flight diagnosis and adaptive profile calculation.
     /// </summary>
     public static class HardwareAuditService
     {
@@ -41,6 +41,9 @@ namespace DeployManager.Services
             // 9. Overall System Compatibility Assessment
             report.Assessment = AssessmentCalculator.EvaluateCompatibility(
                 report.Motherboard, report.Bios, report.SystemUser, report.Network, report.Graphics, report.Storage, report.EfiPreboot);
+
+            // 10. Calculate Hardware-Adaptive Deployment Profile tailored to this specific workstation
+            report.AdaptiveProfile = AdaptiveProfileCalculator.Calculate(report);
 
             return report;
         }
